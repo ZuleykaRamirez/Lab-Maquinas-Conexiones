@@ -1,0 +1,2052 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laboratorio Virtual de Máquinas Eléctricas - Diseñador de Conexiones</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      user-select: none;
+      -webkit-user-select: none;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    }
+
+    /* Fondo cuadriculado tipo CAD / Tinkercad */
+    .lab-grid {
+      background-color: #f1f5f9;
+      background-size: 25px 25px, 25px 25px, 100px 100px, 100px 100px;
+      background-image: 
+        linear-gradient(to right, rgba(203, 213, 225, 0.6) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(203, 213, 225, 0.6) 1px, transparent 1px),
+        linear-gradient(to right, rgba(148, 163, 184, 0.45) 1.5px, transparent 1.5px),
+        linear-gradient(to bottom, rgba(148, 163, 184, 0.45) 1.5px, transparent 1.5px);
+    }
+
+    /* Temas de Fondo del Lienzo */
+    .theme-dark {
+      background-color: #0b1120 !important;
+      background-size: 30px 30px, 30px 30px, 120px 120px, 120px 120px !important;
+      background-image: 
+        linear-gradient(to right, rgba(51, 65, 85, 0.4) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(51, 65, 85, 0.4) 1px, transparent 1px),
+        linear-gradient(to right, rgba(71, 85, 105, 0.6) 1.5px, transparent 1.5px),
+        linear-gradient(to bottom, rgba(71, 85, 105, 0.6) 1.5px, transparent 1.5px) !important;
+    }
+    .theme-white {
+      background-color: #ffffff !important;
+      background-image: none !important;
+    }
+
+    /* Animación fluida de la barra lateral */
+    #sidebar {
+      transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #sidebar.collapsed {
+      width: 0px !important;
+      min-width: 0px !important;
+      overflow: hidden;
+      transform: translateX(-100%);
+      border-right: none;
+    }
+
+    /* Estilo del Borne Banana Hembra */
+    .banana-jack {
+      position: absolute;
+      width: 19px;
+      height: 19px;
+      border-radius: 50%;
+      border: 2.5px solid #0f172a;
+      transform: translate(-50%, -50%);
+      cursor: crosshair;
+      z-index: 30;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+      box-shadow: 0 1.5px 3px rgba(0,0,0,0.55);
+    }
+    .banana-jack:hover {
+      transform: translate(-50%, -50%) scale(1.42);
+      box-shadow: 0 0 12px 4px rgba(250, 204, 21, 0.95);
+      border-color: #fef08a;
+    }
+    .banana-jack::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 6px;
+      height: 6px;
+      background: #020617;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Módulo en el banco */
+    .lab-machine {
+      position: absolute;
+      cursor: grab;
+      border-radius: 6px;
+      z-index: 10;
+      box-shadow: 0 12px 26px -4px rgba(15, 23, 42, 0.45);
+      transition: outline 0.1s ease;
+    }
+    .lab-machine:active {
+      cursor: grabbing;
+    }
+    .lab-machine.active-selected {
+      outline: 3px dashed #f59e0b;
+      outline-offset: 4px;
+    }
+
+    /* En modo Mover Tablero, las máquinas no interceptan el arrastre */
+    body.pan-mode-active .lab-machine,
+    body.pan-mode-active .banana-jack,
+    body.pan-mode-active .wire-handle {
+      pointer-events: none !important;
+    }
+    body.pan-mode-active #viewport {
+      cursor: grab !important;
+    }
+    body.pan-mode-active #viewport:active {
+      cursor: grabbing !important;
+    }
+
+    /* Manejador de cable (Waypoint para rodar curvas) */
+    .wire-handle {
+      fill: #ffffff;
+      stroke: #0f172a;
+      stroke-width: 2.5;
+      cursor: grab;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.45));
+      transition: r 0.15s ease, stroke-color 0.15s ease;
+    }
+    .wire-handle:hover {
+      r: 9.5;
+      stroke: #f59e0b;
+      stroke-width: 3.5;
+    }
+    .wire-handle:active {
+      cursor: grabbing;
+      fill: #fef08a;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 h-screen w-screen flex flex-col font-sans select-none overflow-hidden">
+
+  <!-- ================= BARRA SUPERIOR DE HERRAMIENTAS ================= -->
+  <header class="bg-slate-900 border-b border-slate-800 px-3 py-2 flex flex-wrap items-center justify-between gap-2 shadow-lg z-30">
+    <div class="flex items-center gap-2">
+      <!-- Botón para Colapsar/Mostrar Barra Lateral -->
+      <button id="btnToggleSidebar" class="bg-amber-500 hover:bg-amber-400 text-slate-950 px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 shadow transition-all active:scale-95" title="Mostrar u ocultar el Banco de Máquinas">
+        <i id="toggleSidebarIcon" class="fa-solid fa-angles-left text-xs"></i>
+        <span id="toggleSidebarText" class="text-xs uppercase tracking-wider font-black">Ocultar Banco</span>
+      </button>
+
+      <!-- Selector de Modo: Interactuar vs Mover Tablero Libremente -->
+      <div class="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800">
+        <button id="btnModeInteract" class="px-2.5 py-1 rounded text-xs font-bold bg-amber-500 text-slate-950 flex items-center gap-1.5 transition" title="Conectar bornes, mover máquinas o arrastrar fondo vacío">
+          <i class="fa-solid fa-arrow-pointer"></i>
+          <span>Interactuar</span>
+        </button>
+        <button id="btnModePan" class="px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1.5 transition" title="Modo Mano: Arrastra cualquier parte de la pantalla para moverte por el tablero">
+          <i class="fa-solid fa-hand"></i>
+          <span>Mover Tablero</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Selector de Color de Cables -->
+    <div class="flex items-center gap-1.5 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 shadow-inner">
+      <span class="text-xs text-slate-400 font-semibold mr-1 flex items-center gap-1">
+        <i class="fa-solid fa-palette text-amber-400"></i> Cable:
+      </span>
+      <button class="color-btn w-5 h-5 rounded-full bg-red-600 border-2 border-white ring-2 ring-red-500 transition-transform active:scale-90" data-color="#dc2626" title="Fase L1 / Positivo (Rojo)"></button>
+      <button class="color-btn w-5 h-5 rounded-full bg-amber-400 border-2 border-transparent hover:border-white transition-transform active:scale-90" data-color="#f59e0b" title="Fase L2 (Amarillo)"></button>
+      <button class="color-btn w-5 h-5 rounded-full bg-blue-600 border-2 border-transparent hover:border-white transition-transform active:scale-90" data-color="#2563eb" title="Fase L3 / Neutro (Azul)"></button>
+      <button class="color-btn w-5 h-5 rounded-full bg-slate-900 border-2 border-slate-500 hover:border-white transition-transform active:scale-90" data-color="#0f172a" title="Retorno / Negativo (Negro)"></button>
+      <button class="color-btn w-5 h-5 rounded-full bg-emerald-600 border-2 border-transparent hover:border-white transition-transform active:scale-90" data-color="#16a34a" title="Tierra PE (Verde)"></button>
+      <button class="color-btn w-5 h-5 rounded-full bg-cyan-400 border-2 border-transparent hover:border-white transition-transform active:scale-90" data-color="#06b6d4" title="Control (Cian)"></button>
+      <button class="color-btn w-5 h-5 rounded-full bg-purple-500 border-2 border-transparent hover:border-white transition-transform active:scale-90" data-color="#9333ea" title="Auxiliar (Violeta)"></button>
+    </div>
+
+    <!-- Selector de Forma de Cable: Curvo vs Cuadrado (Ortogonal 90°) -->
+    <div class="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
+      <button id="btnStyleCurved" class="px-2.5 py-1 rounded text-xs font-bold bg-amber-500 text-slate-950 flex items-center gap-1 transition" title="Cable Curvo (Arrastra el nodo blanco para arquear)">
+        <span>〰️</span>
+        <span>Curvo</span>
+      </button>
+      <button id="btnStyleOrtho" class="px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition" title="Cable Cuadrado a 90° (Doble clic en el cable o clic aquí para girar esquinas)">
+        <span>📐</span>
+        <span>Cuadrado</span>
+      </button>
+    </div>
+
+    <!-- Selector de Fondo del Lienzo y Controles de Zoom -->
+    <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
+        <button class="theme-btn px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-amber-300" data-theme="dark" title="Fondo Oscuro de Alto Contraste">Oscuro</button>
+        <button class="theme-btn px-2 py-0.5 rounded text-[11px] font-semibold text-slate-400 hover:text-white" data-theme="grid" title="Rejilla Clara CAD">Rejilla</button>
+        <button class="theme-btn px-2 py-0.5 rounded text-[11px] font-semibold text-slate-400 hover:text-white" data-theme="white" title="Blanco Liso para Informes">Blanco</button>
+      </div>
+
+      <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 text-xs">
+        <button id="btnZoomOut" class="px-1.5 py-0.5 hover:text-amber-400 font-bold" title="Alejar zoom"><i class="fa-solid fa-minus"></i></button>
+        <span id="zoomLabel" class="text-[11px] font-mono px-1 min-w-[42px] text-center">90%</span>
+        <button id="btnZoomIn" class="px-1.5 py-0.5 hover:text-amber-400 font-bold" title="Acercar zoom"><i class="fa-solid fa-plus"></i></button>
+        <button id="btnZoomReset" class="ml-1 text-[10px] text-amber-300 hover:text-white px-2 py-0.5 bg-slate-800 hover:bg-slate-700 rounded font-semibold" title="Centrar y encuadrar vista">Centrar</button>
+      </div>
+    </div>
+
+    <!-- Botones de Acción -->
+    <div class="flex items-center gap-1.5">
+      <button id="btnDeleteSelected" class="px-2.5 py-1.5 text-xs bg-slate-800 hover:bg-rose-600 text-rose-300 hover:text-white rounded border border-rose-900/60 flex items-center gap-1 transition" title="Eliminar máquina o cable seleccionado (Supr)">
+        <i class="fa-solid fa-trash-can"></i>
+        <span>Eliminar</span>
+      </button>
+
+      <button id="btnClearWires" class="px-2.5 py-1.5 text-xs bg-slate-800 hover:bg-amber-600 text-amber-300 hover:text-white rounded border border-amber-900/60 flex items-center gap-1 transition" title="Quitar todos los cables del tablero">
+        <i class="fa-solid fa-scissors"></i>
+        <span>Quitar Cables</span>
+      </button>
+
+      <button id="btnClearAll" class="px-2.5 py-1.5 text-xs bg-slate-800 hover:bg-rose-700 text-slate-200 hover:text-white rounded border border-slate-700 flex items-center gap-1 transition" title="Vaciar todas las máquinas y cables del tablero">
+        <i class="fa-solid fa-rotate-right"></i>
+        <span>Limpiar Tablero</span>
+      </button>
+
+      <button id="btnExport" class="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded shadow flex items-center gap-1.5 transition">
+        <i class="fa-solid fa-camera"></i>
+        <span>Exportar PNG</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= CUERPO CENTRAL ================= -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- BOTÓN FLOTANTE PARA EXPANDIR LA BARRA LATERAL SI ESTÁ OCULTA -->
+    <button id="btnFloatingOpen" class="hidden absolute top-3 left-3 z-40 bg-amber-500 hover:bg-amber-400 text-slate-950 px-3 py-2 rounded-xl font-bold shadow-2xl flex items-center gap-2 transition active:scale-95 border-2 border-slate-900">
+      <i class="fa-solid fa-boxes-stacked text-sm"></i>
+      <span class="text-xs uppercase tracking-wider font-black">Abrir Banco (16)</span>
+    </button>
+
+    <!-- PANEL LATERAL IZQUIERDO: BANCO DE MÁQUINAS -->
+    <aside id="sidebar" class="w-80 bg-slate-900 border-r border-slate-800 flex flex-col z-20 shadow-2xl shrink-0">
+      <div class="p-3 border-b border-slate-800 bg-slate-950/60 flex items-center justify-between">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+          <i class="fa-solid fa-boxes-stacked text-amber-400"></i> Banco de Máquinas
+        </span>
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] bg-slate-800 text-amber-400 font-bold px-2 py-0.5 rounded">16 Equipos</span>
+          <button id="btnSidebarClose" class="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded" title="Ocultar banco">
+            <i class="fa-solid fa-chevron-left text-xs"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Buscador rápido -->
+      <div class="p-2.5 border-b border-slate-800/80 bg-slate-900">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass text-slate-500 absolute left-2.5 top-2.5 text-xs"></i>
+          <input type="text" id="searchInput" placeholder="Buscar DL 1080, vatímetro, RLC..." class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
+        </div>
+      </div>
+
+      <!-- Lista con scrollbar -->
+      <div class="flex-1 overflow-y-auto p-2.5 space-y-2" id="machinesCatalog"></div>
+
+      <!-- Texto corto inferior -->
+      <div class="p-2.5 bg-slate-950/90 border-t border-slate-800 text-[11px] text-slate-400 space-y-1">
+        <p>Simulador del laboratorio de máquinas eléctricas.</p>
+      </div>
+    </aside>
+
+    <!-- ÁREA DE DIBUJO / LIENZO CAD -->
+    <main class="flex-1 relative overflow-hidden lab-grid theme-dark" id="viewport" style="cursor: grab;">
+      <!-- Contenedor transformable por Zoom y Pan -->
+      <div id="world" class="absolute origin-top-left" style="width: 6000px; height: 6000px;">
+        <!-- Capa SVG para cables -->
+        <svg id="wiresSvgLayer" class="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-visible"></svg>
+        <!-- Capa HTML para máquinas -->
+        <div id="machinesBoard" class="absolute inset-0 z-0"></div>
+      </div>
+
+      <!-- CONTROLES FLOTANTES DE NAVEGACIÓN (D-PAD PARA MOVERSE EN GRANDE O PEQUEÑO) -->
+      <div class="absolute bottom-4 right-4 z-30 bg-slate-900/95 border border-slate-700/80 p-2 rounded-2xl shadow-2xl flex flex-col items-center gap-1 backdrop-blur">
+        <span class="text-[9px] font-bold uppercase tracking-wider text-slate-400">Mover Tablero</span>
+        <button id="panUp" class="w-8 h-7 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-lg text-xs font-bold transition flex items-center justify-center" title="Mover vista hacia arriba">
+          <i class="fa-solid fa-chevron-up"></i>
+        </button>
+        <div class="flex items-center gap-1">
+          <button id="panLeft" class="w-8 h-7 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-lg text-xs font-bold transition flex items-center justify-center" title="Mover vista a la izquierda">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <button id="panCenter" class="w-8 h-7 bg-amber-500/20 hover:bg-amber-500 hover:text-slate-950 text-amber-300 rounded-lg text-xs font-bold transition flex items-center justify-center" title="Centrar todo el circuito">
+            <i class="fa-solid fa-crosshairs"></i>
+          </button>
+          <button id="panRight" class="w-8 h-7 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-lg text-xs font-bold transition flex items-center justify-center" title="Mover vista a la derecha">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+        <button id="panDown" class="w-8 h-7 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-lg text-xs font-bold transition flex items-center justify-center" title="Mover vista hacia abajo">
+          <i class="fa-solid fa-chevron-down"></i>
+        </button>
+      </div>
+
+      <!-- Aviso inicial si la mesa está vacía -->
+      <div id="emptyNotice" class="hidden absolute inset-0 flex flex-col items-center justify-center text-slate-400 pointer-events-none">
+        <div class="bg-slate-900/95 backdrop-blur p-6 rounded-2xl border border-slate-700 shadow-2xl max-w-md text-center">
+          <i class="fa-solid fa-bolt text-4xl text-amber-400 mb-2"></i>
+          <h3 class="text-base font-bold text-white mb-1">Mesa de Conexiones Lista</h3>
+          <p class="text-xs text-slate-300">Selecciona cualquier máquina en el banco izquierdo para agregarla al tablero.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Toast informativo -->
+  <div id="toast" class="fixed bottom-4 left-4 bg-slate-900/95 text-white px-3.5 py-2 rounded-xl shadow-2xl border border-slate-700 text-xs flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 z-50 pointer-events-none">
+    <i class="fa-solid fa-circle-info text-amber-400"></i>
+    <span id="toastMsg">Listo</span>
+  </div>
+
+  <!-- ================= LÓGICA Y DEFINICIÓN DE LAS 15 MÁQUINAS ================= -->
+  <script>
+    const MACHINE_TEMPLATES = [
+      // 1. TRANSFORMADOR TRIFÁSICO DE LORENZO DL 1080 (EXACTO A LA FOTO SUBIDA: 2x190V/2x70V, 1kVA, 25 BORNES)
+      {
+        id: 'dl1080_tri',
+        name: 'Transformador Trifásico De Lorenzo DL 1080 (1kVA)',
+        category: 'Transformadores • 25 bornes (2x190V / 2x70V)',
+        width: 470,
+        height: 380,
+        terminals: [
+          // COLUMNA U (Izquierda) - Devanado Superior
+          { id: '1u1', label: '1U1', x: 68,  y: 105, color: '#0f172a' },
+          { id: '1u2', label: '1U2', x: 68,  y: 170, color: '#0f172a' },
+          { id: '2u1', label: '2U1', x: 132, y: 105, color: '#0f172a' },
+          { id: '2u2', label: '2U2', x: 132, y: 170, color: '#0f172a' },
+          // COLUMNA U (Izquierda) - Devanado Inferior
+          { id: '1u3', label: '1U3', x: 68,  y: 235, color: '#0f172a' },
+          { id: '1u4', label: '1U4', x: 68,  y: 300, color: '#0f172a' },
+          { id: '2u3', label: '2U3', x: 132, y: 235, color: '#0f172a' },
+          { id: '2u4', label: '2U4', x: 132, y: 300, color: '#0f172a' },
+
+          // COLUMNA V (Centro) - Devanado Superior (n1=552, n2=213)
+          { id: '1v1', label: '1V1', x: 205, y: 105, color: '#0f172a' },
+          { id: '1v2', label: '1V2', x: 205, y: 170, color: '#0f172a' },
+          { id: '2v1', label: '2V1', x: 269, y: 105, color: '#0f172a' },
+          { id: '2v2', label: '2V2', x: 269, y: 170, color: '#0f172a' },
+          // COLUMNA V (Centro) - Devanado Inferior (n1=552, n2=213)
+          { id: '1v3', label: '1V3', x: 205, y: 235, color: '#0f172a' },
+          { id: '1v4', label: '1V4', x: 205, y: 300, color: '#0f172a' },
+          { id: '2v3', label: '2V3', x: 269, y: 235, color: '#0f172a' },
+          { id: '2v4', label: '2V4', x: 269, y: 300, color: '#0f172a' },
+
+          // COLUMNA W (Derecha) - Devanado Superior
+          { id: '1w1', label: '1W1', x: 342, y: 105, color: '#0f172a' },
+          { id: '1w2', label: '1W2', x: 342, y: 170, color: '#0f172a' },
+          { id: '2w1', label: '2W1', x: 406, y: 105, color: '#0f172a' },
+          { id: '2w2', label: '2W2', x: 406, y: 170, color: '#0f172a' },
+          // COLUMNA W (Derecha) - Devanado Inferior
+          { id: '1w3', label: '1W3', x: 342, y: 235, color: '#0f172a' },
+          { id: '1w4', label: '1W4', x: 342, y: 300, color: '#0f172a' },
+          { id: '2w3', label: '2W3', x: 406, y: 235, color: '#0f172a' },
+          { id: '2w4', label: '2W4', x: 406, y: 300, color: '#0f172a' },
+
+          // Borne de Tierra PE
+          { id: 'pe',  label: 'PE (Tierra)', x: 406, y: 348, color: '#16a34a' }
+        ],
+        svgContent: `
+          <!-- Chasis amarillo mostaza exacto al DL 1080 de la foto -->
+          <rect width="100%" height="100%" rx="6" fill="#dec031" stroke="#423606" stroke-width="3.5"/>
+          
+          <!-- 4 Tornillos de sujeción en las esquinas -->
+          <circle cx="12" cy="52" r="5" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+          <circle cx="458" cy="52" r="5" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+          <circle cx="12" cy="335" r="5" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+          <circle cx="458" cy="335" r="5" fill="#e2e8f0" stroke="#475569" stroke-width="1.5"/>
+
+          <!-- Logotipo DL esquina superior izquierda -->
+          <g transform="translate(20, 12)">
+            <path d="M 0 0 L 22 0 L 22 26 L 0 26 Z" fill="none" stroke="#475569" stroke-width="3.5"/>
+            <path d="M 12 6 L 34 6 L 34 26 L 12 26" fill="none" stroke="#475569" stroke-width="3.5"/>
+            <text x="0" y="36" font-size="6.5" font-weight="900" fill="#1e293b" letter-spacing="0.5">DE LORENZO</text>
+          </g>
+
+          <!-- Encabezado derecho: DL 1080 / 3-PH TRANSFORMER -->
+          <text x="452" y="24" font-size="13" font-weight="900" fill="#1e293b" text-anchor="end">DL 1080</text>
+          <text x="452" y="35" font-size="7.5" font-weight="bold" fill="#1e293b" text-anchor="end">3-PH TRANSFORMER</text>
+
+          <!-- ================= COLUMNA U (1U1..2U4) ================= -->
+          <!-- Superior U -->
+          <polyline points="68,105 95,105 95,170 68,170" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="95" y1="104" x2="95" y2="171" stroke="#334155" stroke-width="5"/>
+          <polyline points="132,105 105,105 105,170 132,170" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="105" y1="104" x2="105" y2="171" stroke="#334155" stroke-width="5"/>
+          <text x="50" y="108" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1U1</text>
+          <text x="50" y="173" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1U2</text>
+          <text x="150" y="108" font-size="8.5" font-weight="bold" fill="#1e293b">2U1</text>
+          <text x="150" y="173" font-size="8.5" font-weight="bold" fill="#1e293b">2U2</text>
+
+          <!-- Inferior U -->
+          <polyline points="68,235 95,235 95,300 68,300" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="95" y1="234" x2="95" y2="301" stroke="#334155" stroke-width="5"/>
+          <polyline points="132,235 105,235 105,300 132,300" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="105" y1="234" x2="105" y2="301" stroke="#334155" stroke-width="5"/>
+          <text x="50" y="238" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1U3</text>
+          <text x="50" y="303" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1U4</text>
+          <text x="150" y="238" font-size="8.5" font-weight="bold" fill="#1e293b">2U3</text>
+          <text x="150" y="303" font-size="8.5" font-weight="bold" fill="#1e293b">2U4</text>
+
+          <!-- ================= COLUMNA V (1V1..2V4 + n1=552 / n2=213) ================= -->
+          <!-- Superior V -->
+          <polyline points="205,105 232,105 232,170 205,170" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="232" y1="104" x2="232" y2="171" stroke="#334155" stroke-width="5"/>
+          <polyline points="269,105 242,105 242,170 269,170" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="242" y1="104" x2="242" y2="171" stroke="#334155" stroke-width="5"/>
+          <text x="187" y="108" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1V1</text>
+          <text x="187" y="173" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1V2</text>
+          <text x="287" y="108" font-size="8.5" font-weight="bold" fill="#1e293b">2V1</text>
+          <text x="287" y="173" font-size="8.5" font-weight="bold" fill="#1e293b">2V2</text>
+          <text x="225" y="141" font-size="8" font-weight="bold" fill="#1e293b" text-anchor="end">n₁=552</text>
+          <text x="249" y="141" font-size="8" font-weight="bold" fill="#1e293b">n₂=213</text>
+
+          <!-- Inferior V -->
+          <polyline points="205,235 232,235 232,300 205,300" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="232" y1="234" x2="232" y2="301" stroke="#334155" stroke-width="5"/>
+          <polyline points="269,235 242,235 242,300 269,300" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="242" y1="234" x2="242" y2="301" stroke="#334155" stroke-width="5"/>
+          <text x="187" y="238" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1V3</text>
+          <text x="187" y="303" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1V4</text>
+          <text x="287" y="238" font-size="8.5" font-weight="bold" fill="#1e293b">2V3</text>
+          <text x="287" y="303" font-size="8.5" font-weight="bold" fill="#1e293b">2V4</text>
+          <text x="225" y="271" font-size="8" font-weight="bold" fill="#1e293b" text-anchor="end">n₁=552</text>
+          <text x="249" y="271" font-size="8" font-weight="bold" fill="#1e293b">n₂=213</text>
+
+          <!-- ================= COLUMNA W (1W1..2W4) ================= -->
+          <!-- Superior W -->
+          <polyline points="342,105 369,105 369,170 342,170" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="369" y1="104" x2="369" y2="171" stroke="#334155" stroke-width="5"/>
+          <polyline points="406,105 379,105 379,170 406,170" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="379" y1="104" x2="379" y2="171" stroke="#334155" stroke-width="5"/>
+          <text x="324" y="108" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1W1</text>
+          <text x="324" y="173" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1W2</text>
+          <text x="424" y="108" font-size="8.5" font-weight="bold" fill="#1e293b">2W1</text>
+          <text x="424" y="173" font-size="8.5" font-weight="bold" fill="#1e293b">2W2</text>
+
+          <!-- Inferior W -->
+          <polyline points="342,235 369,235 369,300 342,300" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="369" y1="234" x2="369" y2="301" stroke="#334155" stroke-width="5"/>
+          <polyline points="406,235 379,235 379,300 406,300" fill="none" stroke="#334155" stroke-width="2"/>
+          <line x1="379" y1="234" x2="379" y2="301" stroke="#334155" stroke-width="5"/>
+          <text x="324" y="238" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1W3</text>
+          <text x="324" y="303" font-size="8.5" font-weight="bold" fill="#1e293b" text-anchor="end">1W4</text>
+          <text x="424" y="238" font-size="8.5" font-weight="bold" fill="#1e293b">2W3</text>
+          <text x="424" y="303" font-size="8.5" font-weight="bold" fill="#1e293b">2W4</text>
+
+          <!-- Leyendas inferiores centrales: 2x190V/2x70V y 1kVA -->
+          <text x="235" y="338" font-size="11.5" font-weight="900" fill="#1e293b" text-anchor="middle" letter-spacing="0.5">2x190V/2x70V</text>
+          <text x="235" y="356" font-size="11" font-weight="900" fill="#1e293b" text-anchor="middle">1kVA</text>
+
+          <!-- CE Made in Italy e icono PE -->
+          <text x="20" y="366" font-size="12" font-weight="900" fill="#1e293b">CE</text>
+          <text x="40" y="365" font-size="6" font-weight="bold" fill="#334155">MADE IN ITALY</text>
+          <circle cx="368" cy="348" r="6" fill="#f8fafc" stroke="#475569" stroke-width="2"/>
+          <circle cx="368" cy="348" r="2.5" fill="#0f172a"/>
+          <text x="406" y="332" font-size="8.5" font-weight="bold" fill="#14532d" text-anchor="middle">PE</text>
+          <text x="430" y="352" font-size="11" font-weight="bold" fill="#14532d">⏚</text>
+        `
+      },
+
+      // 2. FUENTE TRIFÁSICA DE LORENZO DL 1013M3
+      {
+        id: 'dl1013m3',
+        name: 'Fuente Trifásica De Lorenzo DL 1013M3',
+        category: 'Alimentación Principal • 15 bornes',
+        width: 620,
+        height: 230,
+        terminals: [
+          { id: 'mains_l1', label: 'L1 (Fija)', x: 195, y: 135, color: '#dc2626' },
+          { id: 'mains_l2', label: 'L2 (Fija)', x: 215, y: 135, color: '#f59e0b' },
+          { id: 'mains_l3', label: 'L3 (Fija)', x: 235, y: 135, color: '#2563eb' },
+          { id: 'mains_n',  label: 'N (Fijo)',   x: 255, y: 135, color: '#0f172a' },
+          { id: 'mains_pe', label: 'PE (Tierra)',x: 165, y: 135, color: '#16a34a' },
+          { id: 'var_l1', label: 'L1 (Regulable)', x: 310, y: 135, color: '#dc2626' },
+          { id: 'var_l2', label: 'L2 (Regulable)', x: 328, y: 135, color: '#f59e0b' },
+          { id: 'var_l3', label: 'L3 (Regulable)', x: 346, y: 135, color: '#2563eb' },
+          { id: 'var2_l1', label: '380V L1', x: 425, y: 135, color: '#dc2626' },
+          { id: 'var2_l2', label: '380V L2', x: 443, y: 135, color: '#f59e0b' },
+          { id: 'var2_l3', label: '380V L3', x: 461, y: 135, color: '#2563eb' },
+          { id: 'dc_pos', label: 'L+ (DC +)', x: 485, y: 135, color: '#dc2626' },
+          { id: 'dc_neg', label: 'L- (DC -)', x: 503, y: 135, color: '#0f172a' },
+          { id: 'dc_aux_pos', label: '0-225V L+', x: 535, y: 135, color: '#dc2626' },
+          { id: 'dc_aux_neg', label: '0-225V L-', x: 555, y: 135, color: '#0f172a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="6" fill="#eab308" stroke="#854d0e" stroke-width="4"/>
+          <rect x="10" y="10" width="165" height="155" fill="#facc15" stroke="#a16207" stroke-width="1.5" rx="3"/>
+          <rect x="180" y="10" width="85" height="155" fill="#facc15" stroke="#a16207" stroke-width="1.5" rx="3"/>
+          <rect x="270" y="10" width="135" height="155" fill="#facc15" stroke="#a16207" stroke-width="1.5" rx="3"/>
+          <rect x="410" y="10" width="105" height="155" fill="#facc15" stroke="#a16207" stroke-width="1.5" rx="3"/>
+          <rect x="520" y="10" width="90" height="155" fill="#facc15" stroke="#a16207" stroke-width="1.5" rx="3"/>
+          <text x="65" y="115" font-size="12" font-weight="900" fill="#0f172a">DL 1013M3</text>
+          <text x="65" y="128" font-size="8" font-weight="bold" fill="#713f12">DE LORENZO</text>
+          <circle cx="32" cy="38" r="14" fill="#dc2626" stroke="#450a0a" stroke-width="2.5"/>
+          <text x="56" y="42" font-size="9" font-weight="bold" fill="#450a0a">PARO</text>
+          <circle cx="140" cy="85" r="10" fill="#16a34a" stroke="#052e16" stroke-width="2"/>
+          <text x="140" y="105" font-size="8" font-weight="bold" fill="#052e16" text-anchor="middle">START</text>
+          <rect x="68" y="55" width="55" height="30" fill="#f8fafc" stroke="#334155" stroke-width="1.5" rx="2"/>
+          <rect x="74" y="62" width="43" height="14" fill="#1e293b" rx="2"/>
+          <rect x="190" y="55" width="48" height="30" fill="#f8fafc" stroke="#334155" stroke-width="1.5" rx="2"/>
+          <rect x="194" y="62" width="40" height="14" fill="#1e293b" rx="2"/>
+          <circle cx="372" cy="72" r="22" fill="#1e293b" stroke="#0f172a" stroke-width="3"/>
+          <circle cx="372" cy="72" r="14" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+          <text x="372" y="105" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">0 - 100%</text>
+          <circle cx="565" cy="72" r="16" fill="#1e293b" stroke="#0f172a" stroke-width="2"/>
+          <circle cx="305" cy="65" r="12" fill="#0f172a"/><circle cx="340" cy="65" r="12" fill="#0f172a"/>
+          <circle cx="438" cy="65" r="12" fill="#0f172a"/><circle cx="478" cy="65" r="12" fill="#0f172a"/><circle cx="538" cy="65" r="12" fill="#0f172a"/>
+          <text x="195" y="152" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">L1</text>
+          <text x="215" y="152" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">L2</text>
+          <text x="235" y="152" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">L3</text>
+          <text x="255" y="152" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">N</text>
+          <text x="165" y="152" font-size="8" font-weight="bold" fill="#14532d" text-anchor="middle">PE</text>
+          <text x="328" y="152" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">L1-L2-L3 Var</text>
+          <text x="443" y="152" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">380V</text>
+          <text x="494" y="152" font-size="8" font-weight="bold" fill="#991b1b" text-anchor="middle">L+ L-</text>
+          <text x="545" y="152" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">DC Aux</text>
+          <rect x="10" y="172" width="600" height="48" fill="#d97706" rx="3" opacity="0.9"/>
+          <rect x="70" y="180" width="36" height="32" fill="#f8fafc" stroke="#475569" stroke-width="1.5" rx="3"/>
+          <rect x="155" y="180" width="36" height="32" fill="#f8fafc" stroke="#475569" stroke-width="1.5" rx="3"/>
+          <rect x="420" y="180" width="36" height="32" fill="#f8fafc" stroke="#475569" stroke-width="1.5" rx="3"/>
+          <rect x="500" y="180" width="36" height="32" fill="#f8fafc" stroke="#475569" stroke-width="1.5" rx="3"/>
+        `
+      },
+
+      // 3. CAJA DE SINCRONIZACIÓN Y PARO DE EMERGENCIA (CON LATERALES LÍNEA 1-3 Y GEN U1-W1)
+      {
+        id: 'sync_box_grey',
+        name: 'Caja Sincronización y Paro (Laterales L1-L3 / GEN)',
+        category: 'Sincronización • 10 bornes',
+        width: 430,
+        height: 260,
+        terminals: [
+          { id: 'lin1', label: 'LINEA 1', x: 25, y: 70,  color: '#2563eb' },
+          { id: 'lin2', label: 'LINEA 2', x: 25, y: 115, color: '#2563eb' },
+          { id: 'lin3', label: 'LINEA 3', x: 25, y: 160, color: '#2563eb' },
+          { id: 'pe',   label: 'TIERRA',  x: 25, y: 215, color: '#16a34a' },
+          { id: 'gu1',  label: 'GEN-U1',  x: 405, y: 75,  color: '#2563eb' },
+          { id: 'gv1',  label: 'GEN-V1',  x: 405, y: 125, color: '#2563eb' },
+          { id: 'gw1',  label: 'GEN-W1',  x: 405, y: 175, color: '#2563eb' },
+          { id: 'fu1',  label: 'FUSE U1', x: 335, y: 98,  color: '#0f172a' },
+          { id: 'fv1',  label: 'FUSE V1', x: 325, y: 120, color: '#0f172a' },
+          { id: 'fw1',  label: 'FUSE W1', x: 315, y: 142, color: '#0f172a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="6" fill="#e2e8f0" stroke="#64748b" stroke-width="3.5"/>
+          <rect x="6" y="6" width="42" height="248" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.5" rx="3"/>
+          <text x="27" y="30" font-size="7" font-weight="900" fill="#0f172a" text-anchor="middle">LÍNEA</text>
+          <text x="27" y="55" font-size="6.5" font-weight="bold" fill="#334155" text-anchor="middle">LINEA 1</text>
+          <text x="27" y="100" font-size="6.5" font-weight="bold" fill="#334155" text-anchor="middle">LINEA 2</text>
+          <text x="27" y="145" font-size="6.5" font-weight="bold" fill="#334155" text-anchor="middle">LINEA 3</text>
+          <text x="27" y="198" font-size="6.5" font-weight="bold" fill="#14532d" text-anchor="middle">TIERRA</text>
+
+          <rect x="382" y="6" width="42" height="248" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.5" rx="3"/>
+          <text x="403" y="30" font-size="7" font-weight="900" fill="#0f172a" text-anchor="middle">GEN</text>
+          <text x="403" y="60" font-size="6.5" font-weight="bold" fill="#334155" text-anchor="middle">GEN-U1</text>
+          <text x="403" y="110" font-size="6.5" font-weight="bold" fill="#334155" text-anchor="middle">GEN-V1</text>
+          <text x="403" y="160" font-size="6.5" font-weight="bold" fill="#334155" text-anchor="middle">GEN-W1</text>
+
+          <!-- Botón de Paro de Emergencia -->
+          <circle cx="95" cy="48" r="18" fill="#dc2626" stroke="#7f1d1d" stroke-width="2.5"/>
+          <text x="95" y="75" font-size="7.5" font-weight="900" fill="#0f172a" text-anchor="middle">PARO DE EMERGENCIA</text>
+
+          <!-- 3 Pilotos Ámbar en Triángulo -->
+          <circle cx="215" cy="42" r="7" fill="#f59e0b" stroke="#78350f" stroke-width="1.5"/>
+          <text x="215" y="30" font-size="7.5" font-weight="bold" fill="#0f172a" text-anchor="middle">L1-U1</text>
+          <circle cx="182" cy="72" r="7" fill="#f59e0b" stroke="#78350f" stroke-width="1.5"/>
+          <text x="182" y="60" font-size="7.5" font-weight="bold" fill="#0f172a" text-anchor="middle">L2-W1</text>
+          <circle cx="248" cy="72" r="7" fill="#f59e0b" stroke="#78350f" stroke-width="1.5"/>
+          <text x="248" y="60" font-size="7.5" font-weight="bold" fill="#0f172a" text-anchor="middle">L3-V1</text>
+
+          <!-- Barras L1, L2, L3 y Pulsador Verde -->
+          <line x1="75" y1="98" x2="310" y2="98" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="75" y1="120" x2="310" y2="120" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="75" y1="142" x2="310" y2="142" stroke="#0f172a" stroke-width="2.5"/>
+          <circle cx="268" cy="120" r="12" fill="#16a34a" stroke="#052e16" stroke-width="2"/>
+
+          <!-- Dos Displays EBCHQ Apagados -->
+          <rect x="100" y="175" width="70" height="65" fill="#0f172a" rx="3"/>
+          <rect x="108" y="190" width="54" height="20" fill="#450a0a" rx="1"/>
+          <text x="135" y="226" font-size="7.5" font-weight="bold" fill="#cbd5e1" text-anchor="middle">VOLTMETER V~</text>
+
+          <circle cx="215" cy="195" r="10" fill="#0f172a"/>
+          <line x1="215" y1="195" x2="222" y2="187" stroke="#f8fafc" stroke-width="2"/>
+
+          <rect x="260" y="175" width="70" height="65" fill="#0f172a" rx="3"/>
+          <rect x="268" y="190" width="54" height="20" fill="#450a0a" rx="1"/>
+          <text x="295" y="226" font-size="7.5" font-weight="bold" fill="#cbd5e1" text-anchor="middle">HZ METER Hz</text>
+        `
+      },
+
+      // 4. TABLERO MÓDULO DE SINCRONIZACIÓN GRANDE (RED / GEN1 / GEN2 / CARGA)
+      {
+        id: 'sync_cabinet',
+        name: 'Tablero Módulo de Sincronización (RED / GEN1 / GEN2 / CARGA)',
+        category: 'Sincronización • 13 bornes',
+        width: 440,
+        height: 330,
+        terminals: [
+          { id: 'red_1', label: 'RED L1',  x: 45, y: 105, color: '#dc2626' },
+          { id: 'red_2', label: 'RED L2',  x: 45, y: 125, color: '#dc2626' },
+          { id: 'red_3', label: 'RED L3',  x: 45, y: 145, color: '#dc2626' },
+          { id: 'gen2_1', label: 'GEN2 L1', x: 45, y: 245, color: '#0f172a' },
+          { id: 'gen2_2', label: 'GEN2 L2', x: 45, y: 268, color: '#0f172a' },
+          { id: 'gen2_3', label: 'GEN2 L3', x: 45, y: 290, color: '#0f172a' },
+          { id: 'tierra', label: 'TIERRA (PE)', x: 45, y: 312, color: '#16a34a' },
+          { id: 'gen1_1', label: 'GEN1 L1', x: 395, y: 105, color: '#0f172a' },
+          { id: 'gen1_2', label: 'GEN1 L2', x: 395, y: 125, color: '#0f172a' },
+          { id: 'gen1_3', label: 'GEN1 L3', x: 395, y: 145, color: '#0f172a' },
+          { id: 'carga_1', label: 'CARGA L1', x: 395, y: 245, color: '#dc2626' },
+          { id: 'carga_2', label: 'CARGA L2', x: 395, y: 268, color: '#dc2626' },
+          { id: 'carga_3', label: 'CARGA L3', x: 395, y: 290, color: '#dc2626' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="6" fill="#d6d3d1" stroke="#57534e" stroke-width="4"/>
+          <rect x="110" y="14" width="220" height="25" fill="#e7e5e4" stroke="#44403c" stroke-width="1.5" rx="2"/>
+          <text x="220" y="31" font-size="11" font-weight="900" fill="#0f172a" text-anchor="middle">MÓDULO DE SINCRONIZACIÓN</text>
+
+          <rect x="14" y="90" width="20" height="68" fill="none" stroke="#1c1917" stroke-width="1.5"/>
+          <text x="24" y="128" font-size="8" font-weight="900" fill="#0f172a" text-anchor="middle">RED</text>
+
+          <rect x="14" y="232" width="20" height="68" fill="none" stroke="#1c1917" stroke-width="1.5"/>
+          <text x="24" y="270" font-size="7.5" font-weight="900" fill="#0f172a" text-anchor="middle">GEN2</text>
+
+          <rect x="406" y="90" width="20" height="68" fill="none" stroke="#1c1917" stroke-width="1.5"/>
+          <text x="416" y="128" font-size="7.5" font-weight="900" fill="#0f172a" text-anchor="middle">GEN1</text>
+
+          <rect x="406" y="232" width="20" height="68" fill="none" stroke="#1c1917" stroke-width="1.5"/>
+          <text x="416" y="270" font-size="7" font-weight="900" fill="#0f172a" text-anchor="middle">CARGA</text>
+
+          <!-- Lámparas F1-F3 (Rojas) y F4-F6 (Azules) -->
+          <circle cx="155" cy="80" r="10" fill="#991b1b" stroke="#450a0a" stroke-width="2"/>
+          <circle cx="172" cy="62" r="10" fill="#991b1b" stroke="#450a0a" stroke-width="2"/>
+          <circle cx="189" cy="80" r="10" fill="#991b1b" stroke="#450a0a" stroke-width="2"/>
+
+          <line x1="55" y1="105" x2="385" y2="105" stroke="#eab308" stroke-width="3"/>
+          <line x1="55" y1="125" x2="385" y2="125" stroke="#2563eb" stroke-width="3"/>
+          <line x1="55" y1="145" x2="385" y2="145" stroke="#dc2626" stroke-width="3"/>
+
+          <!-- Conmutadores rotativos -->
+          <rect x="208" y="110" width="28" height="28" fill="#78716c" stroke="#1c1917" stroke-width="1.5" rx="2"/>
+          <circle cx="222" cy="124" r="8" fill="#1c1917"/>
+
+          <circle cx="155" cy="222" r="10" fill="#1d4ed8" stroke="#1e3a8a" stroke-width="2"/>
+          <circle cx="172" cy="204" r="10" fill="#1d4ed8" stroke="#1e3a8a" stroke-width="2"/>
+          <circle cx="189" cy="222" r="10" fill="#1d4ed8" stroke="#1e3a8a" stroke-width="2"/>
+
+          <line x1="55" y1="245" x2="385" y2="245" stroke="#eab308" stroke-width="3"/>
+          <line x1="55" y1="268" x2="385" y2="268" stroke="#2563eb" stroke-width="3"/>
+          <line x1="55" y1="290" x2="385" y2="290" stroke="#dc2626" stroke-width="3"/>
+
+          <rect x="208" y="255" width="28" height="28" fill="#78716c" stroke="#1c1917" stroke-width="1.5" rx="2"/>
+          <circle cx="222" cy="269" r="8" fill="#1c1917"/>
+          <rect x="315" y="255" width="28" height="28" fill="#78716c" stroke="#1c1917" stroke-width="1.5" rx="2"/>
+          <circle cx="329" cy="269" r="8" fill="#1c1917"/>
+
+          <rect x="65" y="160" width="65" height="32" fill="#0f172a" rx="2"/>
+          <rect x="310" y="160" width="65" height="32" fill="#0f172a" rx="2"/>
+        `
+      },
+
+      // 5. ANALIZADOR DE RED SCHNEIDER PM5100 HOMESERVICE
+      {
+        id: 'schneider_pm5100',
+        name: 'Analizador Schneider PM5100 HomeService',
+        category: 'Medición de Energía • 9 bornes',
+        width: 320,
+        height: 270,
+        terminals: [
+          { id: 'in_y', label: 'ENTRADA (Amarillo)', x: 25, y: 70,  color: '#eab308' },
+          { id: 'in_b', label: 'ENTRADA (Azul)',     x: 25, y: 115, color: '#2563eb' },
+          { id: 'in_r', label: 'ENTRADA (Rojo)',     x: 25, y: 160, color: '#dc2626' },
+          { id: 'in_k', label: 'ENTRADA (Negro)',    x: 25, y: 205, color: '#0f172a' },
+          { id: 'out_y', label: 'SALIDA (Amarillo)', x: 295, y: 70,  color: '#eab308' },
+          { id: 'out_b', label: 'SALIDA (Azul)',     x: 295, y: 115, color: '#2563eb' },
+          { id: 'out_r', label: 'SALIDA (Rojo)',     x: 295, y: 160, color: '#dc2626' },
+          { id: 'out_k', label: 'SALIDA (Negro)',    x: 295, y: 205, color: '#0f172a' },
+          { id: 'out_pe',label: 'TIERRA (PE)',       x: 295, y: 242, color: '#16a34a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="6" fill="#e2e8f0" stroke="#64748b" stroke-width="4"/>
+          <rect x="6" y="6" width="40" height="258" fill="#cbd5e1" stroke="#94a3b8" stroke-width="2" rx="3"/>
+          <text x="25" y="30" font-size="7.5" font-weight="900" fill="#0f172a" text-anchor="middle">ENTRADA</text>
+
+          <rect x="274" y="6" width="40" height="258" fill="#cbd5e1" stroke="#94a3b8" stroke-width="2" rx="3"/>
+          <text x="294" y="30" font-size="7.5" font-weight="900" fill="#0f172a" text-anchor="middle">SALIDA</text>
+
+          <rect x="58" y="16" width="204" height="238" fill="#1e293b" rx="4"/>
+          <rect x="80" y="30" width="160" height="135" fill="#334155" stroke="#475569" stroke-width="2" rx="4"/>
+          <text x="92" y="46" font-size="8" font-weight="bold" fill="#f8fafc">Schneider Electric</text>
+          <text x="180" y="46" font-size="6.5" fill="#94a3b8">PowerLogic PM5100</text>
+          <rect x="92" y="55" width="136" height="85" fill="#020617" rx="2"/>
+
+          <circle cx="118" cy="150" r="4.5" fill="#cbd5e1"/><circle cx="138" cy="150" r="4.5" fill="#cbd5e1"/>
+          <circle cx="158" cy="150" r="4.5" fill="#cbd5e1"/><circle cx="178" cy="150" r="4.5" fill="#cbd5e1"/>
+
+          <rect x="80" y="185" width="24" height="20" fill="#f8fafc" rx="2"/>
+          <text x="92" y="218" font-size="7" font-weight="bold" fill="#f8fafc" text-anchor="middle">PUERTO 1</text>
+          <rect x="145" y="185" width="24" height="20" fill="#dc2626" rx="2"/>
+          <text x="157" y="218" font-size="7" font-weight="bold" fill="#f8fafc" text-anchor="middle">PUERTO 2</text>
+          <rect x="210" y="185" width="24" height="20" fill="#dc2626" rx="2"/>
+          <text x="222" y="218" font-size="7" font-weight="bold" fill="#f8fafc" text-anchor="middle">PUERTO 3</text>
+        `
+      },
+
+      // 6. VATÍMETRO DIGITAL DE LABORATORIO (CHASIS GRIS CON PANTALLA LARGA Y BORNES ROJOS/NEGROS A LA DERECHA)
+      {
+        id: 'wattmeter',
+        name: 'Vatímetro Digital de Laboratorio',
+        category: 'Medición de Potencia • 5 bornes',
+        width: 350,
+        height: 115,
+        terminals: [
+          { id: 'v_pos', label: 'V+ / Tensión (Rojo Izq)',      x: 242, y: 38, color: '#dc2626' },
+          { id: 'a_pos', label: 'I+ / Corriente (Rojo Der)',    x: 302, y: 38, color: '#dc2626' },
+          { id: 'v_neg', label: 'V- / Común Tensión (Negro)',   x: 252, y: 68, color: '#0f172a' },
+          { id: 'a_neg', label: 'I- / Común Corriente (Negro)', x: 292, y: 68, color: '#0f172a' },
+          { id: 'gnd',   label: 'GND / Tierra Auxiliar',        x: 272, y: 92, color: '#0f172a' }
+        ],
+        svgContent: `
+          <!-- Chasis rectangular gris del Vatímetro Digital (exacto a la referencia) -->
+          <rect x="3" y="3" width="344" height="109" rx="4" fill="#cbd5e1" stroke="#475569" stroke-width="3"/>
+          <!-- Pantalla negra panorámica superior izquierda -->
+          <rect x="16" y="18" width="195" height="36" fill="#020617" stroke="#334155" stroke-width="1.5" rx="2"/>
+          <!-- Botones rectangulares inferiores -->
+          <rect x="24" y="74" width="18" height="9" fill="#f8fafc" stroke="#334155" stroke-width="1.2" rx="1"/>
+          <rect x="52" y="74" width="18" height="9" fill="#f8fafc" stroke="#334155" stroke-width="1.2" rx="1"/>
+          <rect x="98" y="74" width="18" height="9" fill="#f8fafc" stroke="#334155" stroke-width="1.2" rx="1"/>
+          <rect x="124" y="74" width="18" height="9" fill="#f8fafc" stroke="#334155" stroke-width="1.2" rx="1"/>
+          <rect x="172" y="72" width="24" height="12" fill="#f8fafc" stroke="#334155" stroke-width="1.2" rx="1"/>
+          <!-- Etiquetas sutiles de guía en los bornes derechos -->
+          <text x="242" y="22" font-size="7.5" font-weight="900" fill="#991b1b" text-anchor="middle">V+</text>
+          <text x="302" y="22" font-size="7.5" font-weight="900" fill="#991b1b" text-anchor="middle">I+</text>
+          <text x="230" y="71" font-size="7" font-weight="bold" fill="#0f172a" text-anchor="end">V-</text>
+          <text x="314" y="71" font-size="7" font-weight="bold" fill="#0f172a">I-</text>
+        `
+      },
+
+      // 7. TRANSFORMADOR / AUTOTRANSFORMADOR DL 1093 (500VA)
+      {
+        id: 'dl1093',
+        name: 'Transformador Monofásico De Lorenzo DL 1093 (500VA)',
+        category: 'Transformadores • 8 bornes',
+        width: 320,
+        height: 220,
+        terminals: [
+          { id: 'p_1_1', label: '1.1 (380V)', x: 45, y: 50, color: '#0f172a' },
+          { id: 'p_1_3', label: '1.3 (220V)', x: 45, y: 105, color: '#0f172a' },
+          { id: 'p_1_2', label: '1.2 (0V)',   x: 45, y: 175, color: '#0f172a' },
+          { id: 's_2_1', label: '2.1 (110V)', x: 145, y: 50, color: '#0f172a' },
+          { id: 's_2_2', label: '2.2 (0V)',   x: 145, y: 105, color: '#0f172a' },
+          { id: 's_3_1', label: '3.1 (110V)', x: 145, y: 145, color: '#0f172a' },
+          { id: 's_3_2', label: '3.2 (0V)',   x: 145, y: 185, color: '#0f172a' },
+          { id: 'pe',    label: 'PE (Tierra)',x: 235, y: 180, color: '#16a34a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="5" fill="#f59e0b" stroke="#78350f" stroke-width="3"/>
+          <text x="210" y="32" font-size="14" font-weight="900" fill="#0f172a">DL 1093</text>
+          <text x="210" y="46" font-size="9" font-weight="bold" fill="#0f172a">DE LORENZO</text>
+          <text x="235" y="98" font-size="8.5" font-weight="bold" fill="#0f172a" text-anchor="middle">TRANSFORMER 500VA</text>
+          <text x="235" y="110" font-size="7.5" fill="#334155" text-anchor="middle">220-380V / 2x110V</text>
+          <line x1="88" y1="40" x2="88" y2="185" stroke="#0f172a" stroke-width="7"/>
+          <line x1="45" y1="50" x2="88" y2="50" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="45" y1="105" x2="88" y2="105" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="45" y1="175" x2="88" y2="175" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="100" y1="45" x2="100" y2="110" stroke="#0f172a" stroke-width="5"/>
+          <line x1="100" y1="45" x2="145" y2="45" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="100" y1="110" x2="145" y2="110" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="100" y1="140" x2="100" y2="190" stroke="#0f172a" stroke-width="5"/>
+          <line x1="100" y1="140" x2="145" y2="140" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="100" y1="190" x2="145" y2="190" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="70" y="42" font-size="8.5" font-weight="bold" fill="#0f172a">380V</text>
+          <text x="70" y="98" font-size="8.5" font-weight="bold" fill="#0f172a">220V</text>
+          <text x="70" y="170" font-size="8.5" font-weight="bold" fill="#0f172a">0V</text>
+          <text x="120" y="40" font-size="8.5" font-weight="bold" fill="#0f172a">110V</text>
+          <text x="120" y="98" font-size="8.5" font-weight="bold" fill="#0f172a">0V</text>
+          <text x="120" y="136" font-size="8.5" font-weight="bold" fill="#0f172a">110V</text>
+          <text x="120" y="182" font-size="8.5" font-weight="bold" fill="#0f172a">0V</text>
+          <text x="210" y="184" font-size="9" font-weight="bold" fill="#14532d">PE⏚</text>
+        `
+      },
+
+      // 8. REÓSTATO DE EXCITACIÓN DL 10205
+      {
+        id: 'dl10205',
+        name: 'Reóstato De Lorenzo DL 10205 (0.7A)',
+        category: 'Control y Resistencias • 4 bornes',
+        width: 170,
+        height: 240,
+        terminals: [
+          { id: 'term_a', label: 'a (Extremo)',  x: 35,  y: 42, color: '#0f172a' },
+          { id: 'cursor', label: 'Cursor Flecha',x: 85,  y: 42, color: '#0f172a' },
+          { id: 'term_b', label: 'b (Extremo)',  x: 135, y: 42, color: '#0f172a' },
+          { id: 'pe',     label: 'PE (Tierra)',  x: 135, y: 205, color: '#16a34a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="5" fill="#f59e0b" stroke="#78350f" stroke-width="3"/>
+          <line x1="35" y1="42" x2="35" y2="70" stroke="#0f172a" stroke-width="3"/>
+          <line x1="35" y1="70" x2="60" y2="70" stroke="#0f172a" stroke-width="3"/>
+          <line x1="135" y1="42" x2="135" y2="70" stroke="#0f172a" stroke-width="3"/>
+          <line x1="135" y1="70" x2="110" y2="70" stroke="#0f172a" stroke-width="3"/>
+          <rect x="55" y="65" width="60" height="11" fill="none" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="85" y1="42" x2="85" y2="60" stroke="#0f172a" stroke-width="3"/>
+          <polygon points="85,65 81,58 89,58" fill="#0f172a"/>
+          <circle cx="85" cy="135" r="24" fill="#0f172a"/>
+          <circle cx="85" cy="135" r="14" fill="#dc2626"/>
+          <text x="85" y="180" font-size="11" font-weight="bold" fill="#0f172a" text-anchor="middle">I max 0.7 A</text>
+          <text x="22" y="202" font-size="10" font-weight="900" fill="#0f172a">DL 10205</text>
+          <text x="22" y="213" font-size="8" font-weight="bold" fill="#0f172a">DE LORENZO</text>
+          <text x="135" y="195" font-size="8" font-weight="bold" fill="#14532d" text-anchor="middle">PE</text>
+        `
+      },
+
+      // 9. PLACA DE BORNES DE MÁQUINAS ROTATIVAS
+      {
+        id: 'machine_terminals',
+        name: 'Placa de Bornes Motor/Generador AC-DC',
+        category: 'Máquinas Rotativas • 16 bornes',
+        width: 250,
+        height: 230,
+        terminals: [
+          { id: 'A1', label: 'A1 (Armadura)', x: 42, y: 55, color: '#dc2626' },
+          { id: 'B2', label: 'B2 (Armadura)', x: 86, y: 55, color: '#2563eb' },
+          { id: 'D1', label: 'D1 (Serie)',    x: 42, y: 100, color: '#dc2626' },
+          { id: 'D2', label: 'D2 (Serie)',    x: 86, y: 100, color: '#2563eb' },
+          { id: 'E1', label: 'E1 (Shunt)',    x: 42, y: 145, color: '#dc2626' },
+          { id: 'E2', label: 'E2 (Shunt)',    x: 86, y: 145, color: '#2563eb' },
+          { id: 'dc_neg', label: '(-)',       x: 42, y: 190, color: '#0f172a' },
+          { id: 'dc_pos', label: '(+)',       x: 86, y: 190, color: '#dc2626' },
+          { id: 'U1', label: 'U1 (Fase 1)', x: 155, y: 55, color: '#dc2626' },
+          { id: 'U2', label: 'U2 (Fase 1)', x: 205, y: 55, color: '#dc2626' },
+          { id: 'V1', label: 'V1 (Fase 2)', x: 155, y: 100, color: '#f59e0b' },
+          { id: 'V2', label: 'V2 (Fase 2)', x: 205, y: 100, color: '#f59e0b' },
+          { id: 'W1', label: 'W1 (Fase 3)', x: 155, y: 145, color: '#2563eb' },
+          { id: 'W2', label: 'W2 (Fase 3)', x: 205, y: 145, color: '#2563eb' },
+          { id: 'F1', label: 'F1 (Campo)',  x: 155, y: 190, color: '#16a34a' },
+          { id: 'F2', label: 'F2 (Campo)',  x: 205, y: 190, color: '#16a34a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="6" fill="#334155" stroke="#0f172a" stroke-width="4"/>
+          <rect x="15" y="15" width="100" height="200" fill="#0f172a" rx="4"/>
+          <text x="65" y="32" font-size="10" font-weight="900" fill="#94a3b8" text-anchor="middle">ROTOR / DC</text>
+          <rect x="135" y="15" width="100" height="200" fill="#0f172a" rx="4"/>
+          <text x="185" y="32" font-size="10" font-weight="900" fill="#94a3b8" text-anchor="middle">ESTATOR / AC</text>
+          <text x="42" y="73" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">A1</text>
+          <text x="86" y="73" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">B2</text>
+          <text x="42" y="118" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">D1</text>
+          <text x="86" y="118" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">D2</text>
+          <text x="42" y="163" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">E1</text>
+          <text x="86" y="163" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">E2</text>
+          <text x="42" y="208" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">(-)</text>
+          <text x="86" y="208" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">(+)</text>
+          <text x="155" y="73" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">U1</text>
+          <text x="205" y="73" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">U2</text>
+          <text x="155" y="118" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">V1</text>
+          <text x="205" y="118" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">V2</text>
+          <text x="155" y="163" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">W1</text>
+          <text x="205" y="163" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">W2</text>
+          <text x="155" y="208" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">F1</text>
+          <text x="205" y="208" font-size="9" font-weight="bold" fill="#f8fafc" text-anchor="middle">F2</text>
+        `
+      },
+
+      // 10. CARGA RESISTIVA TRIFÁSICA DL 2090
+      {
+        id: 'dl2090',
+        name: 'Carga Resistiva Trifásica DL 2090',
+        category: 'Cargas RLC • 9 bornes',
+        width: 310,
+        height: 190,
+        terminals: [
+          { id: 'r1_a', label: 'R1 Sup', x: 45,  y: 35,  color: '#0f172a' },
+          { id: 'r1_b', label: 'R1 Inf', x: 45,  y: 150, color: '#0f172a' },
+          { id: 'r2_a', label: 'R2 Sup', x: 95,  y: 35,  color: '#0f172a' },
+          { id: 'r2_b', label: 'R2 Inf', x: 95,  y: 150, color: '#0f172a' },
+          { id: 'r3_a', label: 'R3 Sup', x: 145, y: 35,  color: '#0f172a' },
+          { id: 'r3_b', label: 'R3 Inf', x: 145, y: 150, color: '#0f172a' },
+          { id: 's_r1', label: 'Selector R1', x: 210, y: 115, color: '#0f172a' },
+          { id: 's_r2', label: 'Selector R2', x: 245, y: 115, color: '#0f172a' },
+          { id: 's_r3', label: 'Selector R3', x: 280, y: 115, color: '#0f172a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="5" fill="#f59e0b" stroke="#78350f" stroke-width="3"/>
+          <text x="235" y="38" font-size="14" font-weight="900" fill="#0f172a">DL 2090</text>
+          <line x1="45" y1="35" x2="45" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <rect x="37" y="68" width="16" height="45" fill="#f59e0b" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="30" y1="110" x2="62" y2="65" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="28" y="62" font-size="11" font-weight="bold" fill="#0f172a">R1</text>
+
+          <line x1="95" y1="35" x2="95" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <rect x="87" y="68" width="16" height="45" fill="#f59e0b" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="80" y1="110" x2="112" y2="65" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="78" y="62" font-size="11" font-weight="bold" fill="#0f172a">R2</text>
+
+          <line x1="145" y1="35" x2="145" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <rect x="137" y="68" width="16" height="45" fill="#f59e0b" stroke="#0f172a" stroke-width="2.5"/>
+          <line x1="130" y1="110" x2="162" y2="65" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="128" y="62" font-size="11" font-weight="bold" fill="#0f172a">R3</text>
+
+          <text x="210" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">R1</text>
+          <text x="245" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">R2</text>
+          <text x="280" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">R3</text>
+        `
+      },
+
+      // 11. CARGA INDUCTIVA TRIFÁSICA DL 1017L
+      {
+        id: 'dl1017l',
+        name: 'Carga Inductiva Trifásica DL 1017L',
+        category: 'Cargas RLC • 9 bornes',
+        width: 310,
+        height: 190,
+        terminals: [
+          { id: 'l1_a', label: 'L1 Sup', x: 45,  y: 35,  color: '#0f172a' },
+          { id: 'l1_b', label: 'L1 Inf', x: 45,  y: 150, color: '#0f172a' },
+          { id: 'l2_a', label: 'L2 Sup', x: 95,  y: 35,  color: '#0f172a' },
+          { id: 'l2_b', label: 'L2 Inf', x: 95,  y: 150, color: '#0f172a' },
+          { id: 'l3_a', label: 'L3 Sup', x: 145, y: 35,  color: '#0f172a' },
+          { id: 'l3_b', label: 'L3 Inf', x: 145, y: 150, color: '#0f172a' },
+          { id: 's_l1', label: 'Selector L1', x: 210, y: 115, color: '#0f172a' },
+          { id: 's_l2', label: 'Selector L2', x: 245, y: 115, color: '#0f172a' },
+          { id: 's_l3', label: 'Selector L3', x: 280, y: 115, color: '#0f172a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="5" fill="#f59e0b" stroke="#78350f" stroke-width="3"/>
+          <text x="235" y="38" font-size="14" font-weight="900" fill="#0f172a">DL 1017L</text>
+          <line x1="45" y1="35" x2="45" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <rect x="37" y="68" width="16" height="45" fill="#0f172a"/>
+          <line x1="30" y1="110" x2="62" y2="65" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="28" y="62" font-size="11" font-weight="bold" fill="#0f172a">L1</text>
+
+          <line x1="95" y1="35" x2="95" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <rect x="87" y="68" width="16" height="45" fill="#0f172a"/>
+          <line x1="80" y1="110" x2="112" y2="65" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="78" y="62" font-size="11" font-weight="bold" fill="#0f172a">L2</text>
+
+          <line x1="145" y1="35" x2="145" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <rect x="137" y="68" width="16" height="45" fill="#0f172a"/>
+          <line x1="130" y1="110" x2="162" y2="65" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="128" y="62" font-size="11" font-weight="bold" fill="#0f172a">L3</text>
+
+          <text x="210" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">L1</text>
+          <text x="245" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">L2</text>
+          <text x="280" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">L3</text>
+        `
+      },
+
+      // 12. CARGA CAPACITIVA TRIFÁSICA DL 1017C
+      {
+        id: 'dl1017c',
+        name: 'Carga Capacitiva Trifásica DL 1017C',
+        category: 'Cargas RLC • 9 bornes',
+        width: 310,
+        height: 190,
+        terminals: [
+          { id: 'c1_a', label: 'C1 Sup', x: 45,  y: 35,  color: '#0f172a' },
+          { id: 'c1_b', label: 'C1 Inf', x: 45,  y: 150, color: '#0f172a' },
+          { id: 'c2_a', label: 'C2 Sup', x: 95,  y: 35,  color: '#0f172a' },
+          { id: 'c2_b', label: 'C2 Inf', x: 95,  y: 150, color: '#0f172a' },
+          { id: 'c3_a', label: 'C3 Sup', x: 145, y: 35,  color: '#0f172a' },
+          { id: 'c3_b', label: 'C3 Inf', x: 145, y: 150, color: '#0f172a' },
+          { id: 's_c1', label: 'Selector C1', x: 210, y: 115, color: '#0f172a' },
+          { id: 's_c2', label: 'Selector C2', x: 245, y: 115, color: '#0f172a' },
+          { id: 's_c3', label: 'Selector C3', x: 280, y: 115, color: '#0f172a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="5" fill="#f59e0b" stroke="#78350f" stroke-width="3"/>
+          <text x="235" y="38" font-size="14" font-weight="900" fill="#0f172a">DL 1017C</text>
+          <line x1="45" y1="35" x2="45" y2="85" stroke="#0f172a" stroke-width="3"/><line x1="45" y1="95" x2="45" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <line x1="30" y1="85" x2="60" y2="85" stroke="#0f172a" stroke-width="3.5"/><line x1="30" y1="95" x2="60" y2="95" stroke="#0f172a" stroke-width="3.5"/>
+          <line x1="30" y1="110" x2="62" y2="68" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="26" y="75" font-size="10" font-weight="bold" fill="#0f172a">C1</text>
+
+          <line x1="95" y1="35" x2="95" y2="85" stroke="#0f172a" stroke-width="3"/><line x1="95" y1="95" x2="95" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <line x1="80" y1="85" x2="110" y2="85" stroke="#0f172a" stroke-width="3.5"/><line x1="80" y1="95" x2="110" y2="95" stroke="#0f172a" stroke-width="3.5"/>
+          <line x1="80" y1="110" x2="112" y2="68" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="76" y="75" font-size="10" font-weight="bold" fill="#0f172a">C2</text>
+
+          <line x1="145" y1="35" x2="145" y2="85" stroke="#0f172a" stroke-width="3"/><line x1="145" y1="95" x2="145" y2="150" stroke="#0f172a" stroke-width="3"/>
+          <line x1="130" y1="85" x2="160" y2="85" stroke="#0f172a" stroke-width="3.5"/><line x1="130" y1="95" x2="160" y2="95" stroke="#0f172a" stroke-width="3.5"/>
+          <line x1="130" y1="110" x2="162" y2="68" stroke="#0f172a" stroke-width="2.5"/>
+          <text x="126" y="75" font-size="10" font-weight="bold" fill="#0f172a">C3</text>
+
+          <text x="210" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">C1</text>
+          <text x="245" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">C2</text>
+          <text x="280" y="142" font-size="10" font-weight="bold" fill="#0f172a" text-anchor="middle">C3</text>
+        `
+      },
+
+      // 13. MULTÍMETRO DIGITAL INDUSTRIAL TIPO FLUKE
+      {
+        id: 'multimeter_fluke',
+        name: 'Multímetro Digital Industrial (Tipo Fluke)',
+        category: 'Instrumentación Portátil • 4 bornes',
+        width: 140,
+        height: 250,
+        terminals: [
+          { id: 'v_ohm', label: 'V / Ω / Diodo', x: 112, y: 220, color: '#dc2626' },
+          { id: 'com',   label: 'COM (Común)',   x: 82,  y: 220, color: '#0f172a' },
+          { id: 'ma',    label: 'mA / µA',       x: 52,  y: 220, color: '#dc2626' },
+          { id: '10a',   label: '10A MAX',       x: 24,  y: 220, color: '#dc2626' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="16" fill="#facc15" stroke="#713f12" stroke-width="4"/>
+          <rect x="8" y="8" width="124" height="234" rx="12" fill="#1e293b"/>
+          <rect x="18" y="18" width="104" height="60" rx="4" fill="#64748b" stroke="#0f172a" stroke-width="2"/>
+          <rect x="22" y="22" width="96" height="52" rx="2" fill="#020617"/>
+          <text x="70" y="34" font-size="7" font-weight="bold" fill="#94a3b8" text-anchor="middle">TRUE RMS MULTIMETER</text>
+          <circle cx="70" cy="135" r="28" fill="#0f172a" stroke="#475569" stroke-width="3"/>
+          <circle cx="70" cy="135" r="18" fill="#334155"/>
+          <line x1="70" y1="135" x2="70" y2="114" stroke="#f8fafc" stroke-width="3" stroke-linecap="round"/>
+        `
+      },
+
+      // 14. PINZA AMPERIMÉTRICA TIPO FLUKE
+      {
+        id: 'clamp_meter',
+        name: 'Pinza Amperimétrica (Tipo Fluke)',
+        category: 'Instrumentación Portátil • 3 puntos',
+        width: 130,
+        height: 270,
+        terminals: [
+          { id: 'jaw',   label: 'Mordaza de Corriente', x: 65, y: 24,  color: '#dc2626' },
+          { id: 'com',   label: 'COM (Común)',          x: 45, y: 245, color: '#0f172a' },
+          { id: 'v_in',  label: 'V / Ω Input',          x: 85, y: 245, color: '#dc2626' }
+        ],
+        svgContent: `
+          <path d="M 35 70 C 35 15, 95 15, 95 70" fill="none" stroke="#dc2626" stroke-width="16" stroke-linecap="round"/>
+          <path d="M 45 70 C 45 25, 85 25, 85 70" fill="none" stroke="#0f172a" stroke-width="4"/>
+          <path d="M 22 100 L 8 115 L 22 125 Z" fill="#dc2626"/>
+          <rect x="20" y="70" width="90" height="190" rx="12" fill="#facc15" stroke="#854d0e" stroke-width="3"/>
+          <circle cx="65" cy="135" r="22" fill="#0f172a"/>
+          <line x1="65" y1="135" x2="65" y2="118" stroke="#f8fafc" stroke-width="3" stroke-linecap="round"/>
+          <rect x="30" y="172" width="70" height="38" rx="3" fill="#020617"/>
+          <text x="65" y="184" font-size="7" font-weight="bold" fill="#94a3b8" text-anchor="middle">CLAMP 600A</text>
+          <text x="45" y="232" font-size="7" font-weight="bold" fill="#0f172a" text-anchor="middle">COM</text>
+          <text x="85" y="232" font-size="7" font-weight="bold" fill="#0f172a" text-anchor="middle">V/Ω</text>
+        `
+      },
+
+      // 15. OSCILOSCOPIO DIGITAL TEKTRONIX TBS 1072B-EDU (INDEPENDIENTE)
+      {
+        id: 'tektronix_scope',
+        name: 'Osciloscopio Digital Tektronix TBS 1072B-EDU',
+        category: 'Instrumentación de Mesa • 4 conectores BNC',
+        width: 370,
+        height: 205,
+        terminals: [
+          { id: 'ch1', label: 'CH 1 (BNC Canal 1)',    x: 238, y: 162, color: '#eab308' },
+          { id: 'ch2', label: 'CH 2 (BNC Canal 2)',    x: 278, y: 162, color: '#06b6d4' },
+          { id: 'ext', label: 'EXT TRIG (Disparo Ext)', x: 318, y: 162, color: '#64748b' },
+          { id: 'gnd', label: 'Probe Comp / GND',       x: 350, y: 162, color: '#16a34a' }
+        ],
+        svgContent: `
+          <rect width="100%" height="100%" rx="8" fill="#cbd5e1" stroke="#475569" stroke-width="3.5"/>
+          <rect x="8" y="8" width="354" height="189" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+          <text x="20" y="27" font-size="11" font-weight="900" fill="#0284c7">Tektronix</text>
+          <text x="78" y="27" font-size="9" font-weight="bold" fill="#1e293b">TBS 1072B-EDU</text>
+          <text x="152" y="27" font-size="7" font-weight="bold" fill="#475569">Digital Oscilloscope</text>
+
+          <!-- Pantalla Negra y Botonera Lateral -->
+          <rect x="20" y="36" width="175" height="132" rx="3" fill="#020617" stroke="#334155" stroke-width="2.5"/>
+          <rect x="201" y="44" width="12" height="8" rx="1.5" fill="#f8fafc" stroke="#475569" stroke-width="1"/>
+          <rect x="201" y="64" width="12" height="8" rx="1.5" fill="#f8fafc" stroke="#475569" stroke-width="1"/>
+          <rect x="201" y="84" width="12" height="8" rx="1.5" fill="#f8fafc" stroke="#475569" stroke-width="1"/>
+          <rect x="201" y="104" width="12" height="8" rx="1.5" fill="#f8fafc" stroke="#475569" stroke-width="1"/>
+          <rect x="201" y="124" width="12" height="8" rx="1.5" fill="#f8fafc" stroke="#475569" stroke-width="1"/>
+          <text x="107" y="186" font-size="9.5" font-weight="900" fill="#0284c7" text-anchor="middle">Enabling Teaching</text>
+
+          <!-- Perillas de Control Vertical y Horizontal -->
+          <circle cx="238" cy="60" r="11" fill="#94a3b8" stroke="#334155" stroke-width="2"/>
+          <circle cx="238" cy="112" r="11" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+          <circle cx="278" cy="112" r="11" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+          <circle cx="318" cy="88" r="13" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+
+          <rect x="226" y="82" width="14" height="7" fill="#eab308" rx="1"/>
+          <rect x="266" y="82" width="14" height="7" fill="#06b6d4" rx="1"/>
+
+          <text x="238" y="186" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">CH 1</text>
+          <text x="278" y="186" font-size="8" font-weight="bold" fill="#0f172a" text-anchor="middle">CH 2</text>
+          <text x="318" y="186" font-size="7.5" font-weight="bold" fill="#0f172a" text-anchor="middle">EXT TRIG</text>
+          <text x="350" y="186" font-size="7.5" font-weight="bold" fill="#14532d" text-anchor="middle">GND</text>
+        `
+      },
+
+      // 16. GENERADOR DE FUNCIONES / SEÑALES BK PRECISION 4040B (SOLO CHASIS SUPERIOR CON BORDE AZUL)
+      {
+        id: 'bk_generator',
+        name: 'Generador de Señales BK Precision 4040B (20MHz DDS)',
+        category: 'Instrumentación de Mesa • 2 conectores BNC',
+        width: 350,
+        height: 132,
+        terminals: [
+          { id: 'out_main', label: 'OUTPUT (Señal Principal BNC)', x: 268, y: 105, color: '#0284c7' },
+          { id: 'out_sync', label: 'SYNC / TTL OUT (BNC)',         x: 312, y: 105, color: '#64748b' }
+        ],
+        svgContent: `
+          <!-- Chasis blanco/gris claro con borde redondeado azul exacto a la imagen -->
+          <rect x="4" y="4" width="342" height="124" rx="14" fill="#f1f5f9" stroke="#3b82f6" stroke-width="3"/>
+          <text x="22" y="24" font-size="11" font-weight="900" fill="#1d4ed8">BK PRECISION</text>
+          <text x="108" y="24" font-size="7.5" font-weight="bold" fill="#1e293b">4040B 20MHz DDS Function Generator</text>
+
+          <!-- Pantalla Negra del Generador -->
+          <rect x="20" y="32" width="118" height="66" rx="3" fill="#020617" stroke="#334155" stroke-width="2"/>
+
+          <!-- Teclado numérico y perilla -->
+          <rect x="150" y="34" width="12" height="18" fill="#94a3b8" rx="1"/>
+          <rect x="150" y="58" width="12" height="18" fill="#94a3b8" rx="1"/>
+          <rect x="180" y="35" width="44" height="44" fill="#e2e8f0" stroke="#64748b" stroke-width="1" rx="2"/>
+          <circle cx="290" cy="52" r="15" fill="#94a3b8" stroke="#475569" stroke-width="2"/>
+
+          <!-- Botones azules inferiores -->
+          <rect x="35" y="106" width="18" height="7" fill="#2563eb" rx="1"/>
+          <rect x="65" y="106" width="18" height="7" fill="#2563eb" rx="1"/>
+          <rect x="95" y="106" width="18" height="7" fill="#2563eb" rx="1"/>
+          <rect x="155" y="106" width="14" height="7" fill="#2563eb" rx="1"/>
+          <rect x="178" y="106" width="14" height="7" fill="#2563eb" rx="1"/>
+          <rect x="201" y="106" width="14" height="7" fill="#2563eb" rx="1"/>
+          <text x="268" y="88" font-size="7.5" font-weight="bold" fill="#0f172a" text-anchor="middle">OUTPUT</text>
+          <text x="312" y="88" font-size="7.5" font-weight="bold" fill="#0f172a" text-anchor="middle">SYNC</text>
+        `
+      }
+    ];
+
+    /* ============================================================
+       ESTADO GLOBAL & MOVIMIENTO LIBRE POR TODO EL TABLERO
+       ============================================================ */
+    const appState = {
+      currentColor: '#dc2626',
+      currentWireStyle: 'curved', // 'curved' | 'ortho'
+      machinesOnBoard: [],
+      wires: [],
+      selectedWireId: null,
+      selectedMachineUid: null,
+      wiringStart: null,
+      interactionMode: 'interact', // 'interact' | 'pan'
+      scale: 0.85,
+      panX: 30,
+      panY: 25
+    };
+
+    const machinesBoard = document.getElementById('machinesBoard');
+    const wiresSvgLayer = document.getElementById('wiresSvgLayer');
+    const world = document.getElementById('world');
+    const viewport = document.getElementById('viewport');
+    const emptyNotice = document.getElementById('emptyNotice');
+    const sidebar = document.getElementById('sidebar');
+    const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+    const btnSidebarClose = document.getElementById('btnSidebarClose');
+    const btnFloatingOpen = document.getElementById('btnFloatingOpen');
+    const toggleSidebarIcon = document.getElementById('toggleSidebarIcon');
+
+    /* ============================================================
+       MODO INTERACTUAR vs MOVER TABLERO (PANEO EN CUALQUIER ZOOM)
+       ============================================================ */
+    const btnModeInteract = document.getElementById('btnModeInteract');
+    const btnModePan = document.getElementById('btnModePan');
+
+    function setMode(mode) {
+      appState.interactionMode = mode;
+      if (mode === 'pan') {
+        document.body.classList.add('pan-mode-active');
+        btnModePan.className = 'px-2.5 py-1 rounded text-xs font-bold bg-amber-500 text-slate-950 flex items-center gap-1.5 transition';
+        btnModeInteract.className = 'px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1.5 transition';
+        notify('Modo Mover Tablero: Arrastra cualquier parte para desplazarte');
+      } else {
+        document.body.classList.remove('pan-mode-active');
+        btnModeInteract.className = 'px-2.5 py-1 rounded text-xs font-bold bg-amber-500 text-slate-950 flex items-center gap-1.5 transition';
+        btnModePan.className = 'px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1.5 transition';
+      }
+    }
+
+    btnModeInteract.addEventListener('click', () => setMode('interact'));
+    btnModePan.addEventListener('click', () => setMode('pan'));
+
+    /* ============================================================
+       SELECTOR DE ESTILO DE CABLE: CURVO vs CUADRADO (90°)
+       ============================================================ */
+    const btnStyleCurved = document.getElementById('btnStyleCurved');
+    const btnStyleOrtho = document.getElementById('btnStyleOrtho');
+
+    function updateWireStyleButtons(style) {
+      if (style === 'ortho') {
+        btnStyleOrtho.className = 'px-2.5 py-1 rounded text-xs font-bold bg-amber-500 text-slate-950 flex items-center gap-1 transition';
+        btnStyleCurved.className = 'px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition';
+      } else {
+        btnStyleCurved.className = 'px-2.5 py-1 rounded text-xs font-bold bg-amber-500 text-slate-950 flex items-center gap-1 transition';
+        btnStyleOrtho.className = 'px-2.5 py-1 rounded text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1 transition';
+      }
+    }
+
+    function setWireStyle(style) {
+      appState.currentWireStyle = style;
+      updateWireStyleButtons(style);
+
+      // Si hay un cable seleccionado, convertirlo al instante o alternar su orientación de esquina
+      if (appState.selectedWireId) {
+        const wire = appState.wires.find(w => w.id === appState.selectedWireId);
+        if (wire) {
+          if (wire.style === 'ortho' && style === 'ortho') {
+            wire.orthoVariant = wire.orthoVariant === 'h-first' ? 'v-first' : 'h-first';
+            notify('Esquinas cuadradas invertidas • Arrastra el círculo blanco para mover el tramo');
+          } else {
+            wire.style = style;
+            notify(style === 'ortho'
+              ? 'Cable convertido a Cuadrado (90°) • Arrastra el nodo blanco para encajarlo'
+              : 'Cable convertido a Curvo');
+          }
+          renderWirePath(wire);
+        }
+      } else {
+        notify(style === 'ortho'
+          ? 'Modo Cable Cuadrado (90°) activo'
+          : 'Modo Cable Curvo activo');
+      }
+    }
+
+    btnStyleCurved.addEventListener('click', () => setWireStyle('curved'));
+    btnStyleOrtho.addEventListener('click', () => setWireStyle('ortho'));
+
+    /* ============================================================
+       COLAPSAR / DESPLEGAR BARRA LATERAL
+       ============================================================ */
+    function toggleSidebar(forceOpen = null) {
+      const willCollapse = forceOpen !== null ? !forceOpen : !sidebar.classList.contains('collapsed');
+      if (willCollapse) {
+        sidebar.classList.add('collapsed');
+        btnFloatingOpen.classList.remove('hidden');
+        toggleSidebarIcon.className = 'fa-solid fa-angles-right text-xs';
+        document.getElementById('toggleSidebarText').textContent = 'Mostrar Banco';
+      } else {
+        sidebar.classList.remove('collapsed');
+        btnFloatingOpen.classList.add('hidden');
+        toggleSidebarIcon.className = 'fa-solid fa-angles-left text-xs';
+        document.getElementById('toggleSidebarText').textContent = 'Ocultar Banco';
+      }
+    }
+
+    btnToggleSidebar.addEventListener('click', () => toggleSidebar());
+    btnSidebarClose.addEventListener('click', () => toggleSidebar(false));
+    btnFloatingOpen.addEventListener('click', () => toggleSidebar(true));
+
+    /* ============================================================
+       TEMAS DE FONDO DEL LIENZO
+       ============================================================ */
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.theme-btn').forEach(b => {
+          b.className = 'theme-btn px-2 py-0.5 rounded text-[11px] font-semibold text-slate-400 hover:text-white';
+        });
+        btn.className = 'theme-btn px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-amber-300';
+
+        const theme = btn.dataset.theme;
+        viewport.classList.remove('theme-dark', 'theme-white');
+        if (theme === 'dark') viewport.classList.add('theme-dark');
+        if (theme === 'white') viewport.classList.add('theme-white');
+      });
+    });
+
+    /* ============================================================
+       ZOOM Y PANEO LIBRE (EN GRANDE O PEQUEÑO)
+       ============================================================ */
+    function updateTransform() {
+      world.style.transform = `translate(${appState.panX}px, ${appState.panY}px) scale(${appState.scale})`;
+      document.getElementById('zoomLabel').textContent = Math.round(appState.scale * 100) + '%';
+    }
+
+    function zoomAroundPoint(newScale, screenX, screenY) {
+      const clampedScale = Math.max(0.22, Math.min(2.4, newScale));
+      const rect = viewport.getBoundingClientRect();
+      const cx = screenX !== undefined ? screenX - rect.left : rect.width / 2;
+      const cy = screenY !== undefined ? screenY - rect.top : rect.height / 2;
+
+      appState.panX = cx - ((cx - appState.panX) / appState.scale) * clampedScale;
+      appState.panY = cy - ((cy - appState.panY) / appState.scale) * clampedScale;
+      appState.scale = clampedScale;
+      updateTransform();
+    }
+
+    document.getElementById('btnZoomIn').addEventListener('click', () => zoomAroundPoint(appState.scale + 0.14));
+    document.getElementById('btnZoomOut').addEventListener('click', () => zoomAroundPoint(appState.scale - 0.14));
+
+    function fitAllMachinesInView() {
+      if (appState.machinesOnBoard.length === 0) {
+        appState.scale = 0.9;
+        appState.panX = 40;
+        appState.panY = 40;
+        updateTransform();
+        return;
+      }
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      appState.machinesOnBoard.forEach(m => {
+        const tmpl = MACHINE_TEMPLATES.find(t => t.id === m.templateId);
+        minX = Math.min(minX, m.x);
+        minY = Math.min(minY, m.y);
+        maxX = Math.max(maxX, m.x + tmpl.width);
+        maxY = Math.max(maxY, m.y + tmpl.height);
+      });
+      const rect = viewport.getBoundingClientRect();
+      const contentW = Math.max(400, maxX - minX + 120);
+      const contentH = Math.max(300, maxY - minY + 120);
+      const scale = Math.min(1.15, Math.max(0.25, Math.min(rect.width / contentW, rect.height / contentH)));
+      appState.scale = scale;
+      appState.panX = (rect.width - (maxX - minX) * scale) / 2 - minX * scale;
+      appState.panY = (rect.height - (maxY - minY) * scale) / 2 - minY * scale;
+      updateTransform();
+    }
+
+    document.getElementById('btnZoomReset').addEventListener('click', fitAllMachinesInView);
+    document.getElementById('panCenter').addEventListener('click', fitAllMachinesInView);
+
+    // Botones del D-Pad direccional en pantalla
+    document.getElementById('panUp').addEventListener('click', () => { appState.panY += 140; updateTransform(); });
+    document.getElementById('panDown').addEventListener('click', () => { appState.panY -= 140; updateTransform(); });
+    document.getElementById('panLeft').addEventListener('click', () => { appState.panX += 140; updateTransform(); });
+    document.getElementById('panRight').addEventListener('click', () => { appState.panX -= 140; updateTransform(); });
+
+    // Arrastre directo del tablero con clic izquierdo en cualquier espacio vacío, modo Mover Tablero, clic central o clic derecho
+    let isPanningBoard = false;
+    let panOriginX = 0;
+    let panOriginY = 0;
+
+    viewport.addEventListener('pointerdown', (e) => {
+      const clickedEmptyArea = (
+        e.target.id === 'viewport' ||
+        e.target.id === 'world' ||
+        e.target.id === 'machinesBoard' ||
+        e.target.id === 'wiresSvgLayer'
+      );
+
+      if (appState.interactionMode === 'pan' || e.button === 1 || e.button === 2 || (e.button === 0 && clickedEmptyArea)) {
+        if (appState.wiringStart && clickedEmptyArea) {
+          abortWiring();
+        }
+        deselectWire();
+        deselectMachine();
+        isPanningBoard = true;
+        panOriginX = e.clientX - appState.panX;
+        panOriginY = e.clientY - appState.panY;
+        viewport.style.cursor = 'grabbing';
+        viewport.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      }
+    });
+
+    viewport.addEventListener('pointermove', (e) => {
+      if (isPanningBoard) {
+        appState.panX = e.clientX - panOriginX;
+        appState.panY = e.clientY - panOriginY;
+        updateTransform();
+        return;
+      }
+
+      if (appState.wiringStart && tempDraftWire) {
+        const rect = world.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) / appState.scale;
+        const mouseY = (e.clientY - rect.top) / appState.scale;
+        const p1 = { x: appState.wiringStart.x, y: appState.wiringStart.y };
+        const p2 = { x: mouseX, y: mouseY };
+        tempDraftWire.setAttribute(
+          'd',
+          generateWirePathData(p1, p2, { x: 0, y: 45 }, appState.currentWireStyle, 'v-first')
+        );
+      }
+    });
+
+    const stopBoardPan = (e) => {
+      if (isPanningBoard) {
+        isPanningBoard = false;
+        viewport.style.cursor = 'grab';
+        try { viewport.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+    };
+    viewport.addEventListener('pointerup', stopBoardPan);
+    viewport.addEventListener('pointercancel', stopBoardPan);
+
+    // Zoom centrado en el puntero con la rueda del ratón
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      zoomAroundPoint(appState.scale + delta, e.clientX, e.clientY);
+    }, { passive: false });
+
+    viewport.addEventListener('contextmenu', e => e.preventDefault());
+
+    /* ============================================================
+       CATÁLOGO Y CREACIÓN DE MÁQUINAS
+       ============================================================ */
+    function renderCatalog(filterText = '') {
+      const catalogEl = document.getElementById('machinesCatalog');
+      catalogEl.innerHTML = '';
+
+      const filtered = MACHINE_TEMPLATES.filter(tmpl =>
+        tmpl.name.toLowerCase().includes(filterText.toLowerCase()) ||
+        tmpl.category.toLowerCase().includes(filterText.toLowerCase())
+      );
+
+      filtered.forEach(tmpl => {
+        const card = document.createElement('div');
+        card.className = 'p-2.5 bg-slate-950 border border-slate-800 hover:border-amber-500/80 rounded-xl cursor-pointer transition shadow group';
+        card.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-xs font-bold text-slate-100 group-hover:text-amber-400 transition truncate">${tmpl.name}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5 truncate">${tmpl.category}</div>
+            </div>
+            <button class="shrink-0 bg-slate-800 group-hover:bg-amber-500 group-hover:text-slate-950 text-slate-200 px-2.5 py-1 rounded-lg text-[11px] font-bold transition">
+              + Agregar
+            </button>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          // Colocar cerca del centro visible actual del tablero
+          const rect = viewport.getBoundingClientRect();
+          const centerWorldX = ((rect.width / 2) - appState.panX) / appState.scale;
+          const centerWorldY = ((rect.height / 2) - appState.panY) / appState.scale;
+          const posX = Math.max(20, Math.round(centerWorldX - tmpl.width / 2 + (Math.random() * 50 - 25)));
+          const posY = Math.max(20, Math.round(centerWorldY - tmpl.height / 2 + (Math.random() * 50 - 25)));
+          spawnMachine(tmpl.id, posX, posY);
+        });
+
+        catalogEl.appendChild(card);
+      });
+    }
+
+    document.getElementById('searchInput').addEventListener('input', (e) => renderCatalog(e.target.value));
+
+    let machineCounter = 1;
+
+    function spawnMachine(templateId, initialX = 50, initialY = 50) {
+      const tmpl = MACHINE_TEMPLATES.find(t => t.id === templateId);
+      if (!tmpl) return;
+
+      const uid = 'mach_' + (machineCounter++);
+
+      const machineEl = document.createElement('div');
+      machineEl.className = 'lab-machine';
+      machineEl.id = uid;
+      machineEl.style.width = tmpl.width + 'px';
+      machineEl.style.height = tmpl.height + 'px';
+      machineEl.style.left = initialX + 'px';
+      machineEl.style.top = initialY + 'px';
+
+      const svgContainer = document.createElement('div');
+      svgContainer.className = 'w-full h-full pointer-events-none';
+      svgContainer.innerHTML = `<svg width="100%" height="100%">${tmpl.svgContent}</svg>`;
+      machineEl.appendChild(svgContainer);
+
+      tmpl.terminals.forEach(term => {
+        const jack = document.createElement('div');
+        jack.className = 'banana-jack';
+        jack.style.left = term.x + 'px';
+        jack.style.top = term.y + 'px';
+        jack.style.backgroundColor = term.color;
+        jack.title = `${term.label} (${tmpl.name})`;
+        jack.dataset.machineUid = uid;
+        jack.dataset.terminalId = term.id;
+
+        jack.addEventListener('pointerdown', (e) => {
+          if (appState.interactionMode === 'pan') return;
+          e.stopPropagation();
+          onTerminalPointerDown(uid, term.id);
+        });
+
+        machineEl.appendChild(jack);
+      });
+
+      enableDraggable(machineEl, uid);
+
+      machineEl.addEventListener('pointerdown', (e) => {
+        if (appState.interactionMode === 'pan') return;
+        if (e.target.classList.contains('banana-jack')) return;
+        e.stopPropagation();
+        selectMachine(uid);
+      });
+
+      machinesBoard.appendChild(machineEl);
+
+      appState.machinesOnBoard.push({
+        uid,
+        templateId,
+        x: initialX,
+        y: initialY,
+        el: machineEl
+      });
+
+      refreshEmptyNotice();
+      return uid;
+    }
+
+    function selectMachine(uid) {
+      appState.selectedMachineUid = uid;
+      deselectWire();
+      document.querySelectorAll('.lab-machine').forEach(m => {
+        m.classList.toggle('active-selected', m.id === uid);
+      });
+    }
+
+    function deselectMachine() {
+      appState.selectedMachineUid = null;
+      document.querySelectorAll('.lab-machine').forEach(m => m.classList.remove('active-selected'));
+    }
+
+    function refreshEmptyNotice() {
+      emptyNotice.classList.toggle('hidden', appState.machinesOnBoard.length > 0);
+    }
+
+    /* ============================================================
+       ARRASTRE DE MÁQUINAS Y ACTUALIZACIÓN DE CABLES
+       ============================================================ */
+    function enableDraggable(element, uid) {
+      let isDragging = false;
+      let startClientX, startClientY;
+      let startLeft, startTop;
+
+      element.addEventListener('pointerdown', (e) => {
+        if (appState.interactionMode === 'pan') return;
+        if (e.target.classList.contains('banana-jack') || e.button !== 0) return;
+        e.stopPropagation();
+        isDragging = true;
+        startClientX = e.clientX;
+        startClientY = e.clientY;
+        startLeft = parseFloat(element.style.left) || 0;
+        startTop = parseFloat(element.style.top) || 0;
+        element.setPointerCapture(e.pointerId);
+      });
+
+      element.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const dx = (e.clientX - startClientX) / appState.scale;
+        const dy = (e.clientY - startClientY) / appState.scale;
+
+        const newX = Math.max(10, startLeft + dx);
+        const newY = Math.max(10, startTop + dy);
+
+        element.style.left = newX + 'px';
+        element.style.top = newY + 'px';
+
+        const mach = appState.machinesOnBoard.find(m => m.uid === uid);
+        if (mach) {
+          mach.x = newX;
+          mach.y = newY;
+        }
+
+        redrawAllWires();
+      });
+
+      const onStopDrag = (e) => {
+        if (isDragging) {
+          isDragging = false;
+          try { element.releasePointerCapture(e.pointerId); } catch (err) {}
+        }
+      };
+
+      element.addEventListener('pointerup', onStopDrag);
+      element.addEventListener('pointercancel', onStopDrag);
+    }
+
+    /* ============================================================
+       SISTEMA DE CABLEADO Y RODADO DE CABLES
+       ============================================================ */
+    let tempDraftWire = null;
+
+    function getAbsoluteTerminalCoords(machineUid, termId) {
+      const mach = appState.machinesOnBoard.find(m => m.uid === machineUid);
+      if (!mach) return { x: 0, y: 0 };
+      const tmpl = MACHINE_TEMPLATES.find(t => t.id === mach.templateId);
+      const term = tmpl.terminals.find(t => t.id === termId);
+      if (!term) return { x: 0, y: 0 };
+      return { x: mach.x + term.x, y: mach.y + term.y };
+    }
+
+    function onTerminalPointerDown(machineUid, termId) {
+      const pos = getAbsoluteTerminalCoords(machineUid, termId);
+
+      if (!appState.wiringStart) {
+        appState.wiringStart = { machineUid, termId, x: pos.x, y: pos.y };
+
+        tempDraftWire = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        tempDraftWire.setAttribute('fill', 'none');
+        tempDraftWire.setAttribute('stroke', appState.currentColor);
+        tempDraftWire.setAttribute('stroke-width', '5.5');
+        tempDraftWire.setAttribute('stroke-linecap', 'round');
+        tempDraftWire.setAttribute('stroke-linejoin', 'round');
+        tempDraftWire.setAttribute('stroke-dasharray', '8,6');
+        wiresSvgLayer.appendChild(tempDraftWire);
+
+        notify('Haz clic en otro borne para completar la conexión');
+      } else {
+        if (appState.wiringStart.machineUid === machineUid && appState.wiringStart.termId === termId) {
+          abortWiring();
+          return;
+        }
+        addWire(
+          appState.wiringStart.machineUid,
+          appState.wiringStart.termId,
+          machineUid,
+          termId,
+          appState.currentColor,
+          appState.currentWireStyle
+        );
+        abortWiring();
+        notify('Cable conectado • Arrastra su círculo blanco central para moverlo');
+      }
+    }
+
+    function abortWiring() {
+      if (tempDraftWire && tempDraftWire.parentNode) {
+        tempDraftWire.parentNode.removeChild(tempDraftWire);
+      }
+      tempDraftWire = null;
+      appState.wiringStart = null;
+    }
+
+    // Genera ruta curva (Bézier) o cuadrada ortogonal a 90° que pasa siempre por el manejador (midX, midY)
+    function generateWirePathData(p1, p2, offset, style = 'curved', orthoVariant = 'v-first') {
+      const midX = (p1.x + p2.x) / 2 + (offset.x || 0);
+      const midY = (p1.y + p2.y) / 2 + (offset.y !== undefined ? offset.y : 40);
+
+      if (style === 'ortho') {
+        if (orthoVariant === 'h-first') {
+          // Sale horizontal de ambos bornes hacia la columna vertical en midX y cruza por midY
+          const stepOut = (p2.x >= p1.x) ? 24 : -24;
+          const xStart = Math.abs(midX - p1.x) > 18 ? midX : p1.x + stepOut;
+          return `M ${p1.x} ${p1.y} L ${xStart} ${p1.y} L ${xStart} ${midY} L ${midX} ${midY} L ${midX} ${p2.y} L ${p2.x} ${p2.y}`;
+        } else {
+          // Sale hacia el canal horizontal en midY pudiendo además estirar el costado hacia midX (ideal para pasar por debajo o rodear máquinas como en tu foto)
+          const minX = Math.min(p1.x, p2.x);
+          const maxX = Math.max(p1.x, p2.x);
+          if (midX < minX - 18 || midX > maxX + 18) {
+            // Si el usuario arrastra el nodo blanco hacia la izquierda o derecha de ambos bornes, hace un puente lateral cuadrado
+            const leg1Y = p1.y + (midY >= p1.y ? 22 : -22);
+            return `M ${p1.x} ${p1.y} L ${p1.x} ${leg1Y} L ${midX} ${leg1Y} L ${midX} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+          }
+          // Canal inferior/superior cuadrado directo pasando exactamente por (midX, midY)
+          return `M ${p1.x} ${p1.y} L ${p1.x} ${midY} L ${midX} ${midY} L ${p2.x} ${midY} L ${p2.x} ${p2.y}`;
+        }
+      }
+
+      // Curva suave por defecto
+      const ctrlX = 2 * midX - 0.5 * (p1.x + p2.x);
+      const ctrlY = 2 * midY - 0.5 * (p1.y + p2.y);
+      return `M ${p1.x} ${p1.y} Q ${ctrlX} ${ctrlY} ${p2.x} ${p2.y}`;
+    }
+
+    function addWire(fromUid, fromTermId, toUid, toTermId, color, style = appState.currentWireStyle) {
+      const wireId = 'wire_' + Date.now() + Math.random().toString(16).slice(2, 6);
+
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      group.id = wireId;
+      group.classList.add('pointer-events-auto');
+
+      const shadowPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      shadowPath.setAttribute('fill', 'none');
+      shadowPath.setAttribute('stroke', 'rgba(2, 6, 23, 0.45)');
+      shadowPath.setAttribute('stroke-width', '8');
+      shadowPath.setAttribute('stroke-linecap', 'round');
+      shadowPath.setAttribute('stroke-linejoin', 'round');
+
+      const mainPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      mainPath.setAttribute('fill', 'none');
+      mainPath.setAttribute('stroke', color);
+      mainPath.setAttribute('stroke-width', '5.5');
+      mainPath.setAttribute('stroke-linecap', 'round');
+      mainPath.setAttribute('stroke-linejoin', 'round');
+
+      const hitPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hitPath.setAttribute('fill', 'none');
+      hitPath.setAttribute('stroke', 'transparent');
+      hitPath.setAttribute('stroke-width', '20');
+      hitPath.setAttribute('stroke-linejoin', 'round');
+      hitPath.style.cursor = 'pointer';
+
+      const handleCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      handleCircle.classList.add('wire-handle');
+      handleCircle.setAttribute('r', '7.5');
+
+      group.appendChild(shadowPath);
+      group.appendChild(mainPath);
+      group.appendChild(hitPath);
+      group.appendChild(handleCircle);
+      wiresSvgLayer.appendChild(group);
+
+      const wireObj = {
+        id: wireId,
+        fromUid,
+        fromTermId,
+        toUid,
+        toTermId,
+        color,
+        style: style || 'curved',
+        orthoVariant: 'v-first',
+        customOffset: { x: 0, y: 45 },
+        element: group,
+        mainPath,
+        shadowPath,
+        hitPath,
+        handleCircle
+      };
+
+      hitPath.addEventListener('pointerdown', (e) => {
+        if (appState.interactionMode === 'pan') return;
+        e.stopPropagation();
+        selectWire(wireId);
+      });
+
+      // Doble clic sobre cualquier cable alterna entre Curvo, Cuadrado Vertical y Cuadrado Horizontal
+      hitPath.addEventListener('dblclick', (e) => {
+        if (appState.interactionMode === 'pan') return;
+        e.stopPropagation();
+        if (wireObj.style === 'curved') {
+          wireObj.style = 'ortho';
+          wireObj.orthoVariant = 'v-first';
+          notify('Cable cambiado a Cuadrado (90°)');
+        } else if (wireObj.style === 'ortho' && wireObj.orthoVariant === 'v-first') {
+          wireObj.orthoVariant = 'h-first';
+          notify('Esquinas cuadradas giradas');
+        } else {
+          wireObj.style = 'curved';
+          notify('Cable cambiado a Curvo');
+        }
+        updateWireStyleButtons(wireObj.style);
+        renderWirePath(wireObj);
+      });
+
+      enableWireHandleDrag(handleCircle, wireObj);
+
+      appState.wires.push(wireObj);
+      renderWirePath(wireObj);
+      return wireObj;
+    }
+
+    function enableWireHandleDrag(handleEl, wireObj) {
+      let isDragging = false;
+      let startMouseX, startMouseY;
+      let initialOffsetX, initialOffsetY;
+
+      handleEl.addEventListener('pointerdown', (e) => {
+        if (appState.interactionMode === 'pan' || e.button !== 0) return;
+        e.stopPropagation();
+        isDragging = true;
+        selectWire(wireObj.id);
+        startMouseX = e.clientX;
+        startMouseY = e.clientY;
+        initialOffsetX = wireObj.customOffset.x;
+        initialOffsetY = wireObj.customOffset.y;
+        handleEl.setPointerCapture(e.pointerId);
+      });
+
+      handleEl.addEventListener('pointermove', (e) => {
+        if (!isDragging) return;
+        const dx = (e.clientX - startMouseX) / appState.scale;
+        const dy = (e.clientY - startMouseY) / appState.scale;
+
+        wireObj.customOffset.x = initialOffsetX + dx;
+        wireObj.customOffset.y = initialOffsetY + dy;
+        renderWirePath(wireObj);
+      });
+
+      const onStop = (e) => {
+        if (isDragging) {
+          isDragging = false;
+          try { handleEl.releasePointerCapture(e.pointerId); } catch (err) {}
+        }
+      };
+
+      handleEl.addEventListener('pointerup', onStop);
+      handleEl.addEventListener('pointercancel', onStop);
+    }
+
+    function renderWirePath(wire) {
+      const p1 = getAbsoluteTerminalCoords(wire.fromUid, wire.fromTermId);
+      const p2 = getAbsoluteTerminalCoords(wire.toUid, wire.toTermId);
+
+      const d = generateWirePathData(p1, p2, wire.customOffset, wire.style, wire.orthoVariant);
+      wire.mainPath.setAttribute('d', d);
+      wire.hitPath.setAttribute('d', d);
+
+      const p1Shadow = { x: p1.x, y: p1.y + 5 };
+      const p2Shadow = { x: p2.x, y: p2.y + 5 };
+      wire.shadowPath.setAttribute('d', generateWirePathData(p1Shadow, p2Shadow, wire.customOffset, wire.style, wire.orthoVariant));
+
+      const midX = (p1.x + p2.x) / 2 + wire.customOffset.x;
+      const midY = (p1.y + p2.y) / 2 + wire.customOffset.y;
+      wire.handleCircle.setAttribute('cx', midX);
+      wire.handleCircle.setAttribute('cy', midY);
+    }
+
+    function redrawAllWires() {
+      appState.wires.forEach(wire => renderWirePath(wire));
+    }
+
+    /* ============================================================
+       SELECCIÓN, COLOR Y ELIMINACIÓN
+       ============================================================ */
+    function selectWire(wireId) {
+      appState.selectedWireId = wireId;
+      deselectMachine();
+      appState.wires.forEach(w => {
+        if (w.id === wireId) {
+          w.mainPath.setAttribute('stroke-width', '8');
+          w.handleCircle.setAttribute('r', '9.5');
+          w.handleCircle.style.stroke = '#f59e0b';
+          updateWireStyleButtons(w.style || 'curved');
+        } else {
+          w.mainPath.setAttribute('stroke-width', '5.5');
+          w.handleCircle.setAttribute('r', '7.5');
+          w.handleCircle.style.stroke = '#0f172a';
+        }
+      });
+    }
+
+    function deselectWire() {
+      if (appState.selectedWireId) {
+        appState.wires.forEach(w => {
+          w.mainPath.setAttribute('stroke-width', '5.5');
+          w.handleCircle.setAttribute('r', '7.5');
+          w.handleCircle.style.stroke = '#0f172a';
+        });
+        appState.selectedWireId = null;
+      }
+    }
+
+    function deleteActiveSelection() {
+      if (appState.selectedWireId) {
+        const idx = appState.wires.findIndex(w => w.id === appState.selectedWireId);
+        if (idx !== -1) {
+          const wire = appState.wires[idx];
+          if (wire.element.parentNode) wire.element.parentNode.removeChild(wire.element);
+          appState.wires.splice(idx, 1);
+          appState.selectedWireId = null;
+          notify('Cable eliminado');
+          return;
+        }
+      }
+
+      if (appState.selectedMachineUid) {
+        const machIdx = appState.machinesOnBoard.findIndex(m => m.uid === appState.selectedMachineUid);
+        if (machIdx !== -1) {
+          const mach = appState.machinesOnBoard[machIdx];
+          const remainingWires = [];
+          appState.wires.forEach(wire => {
+            if (wire.fromUid === mach.uid || wire.toUid === mach.uid) {
+              if (wire.element.parentNode) wire.element.parentNode.removeChild(wire.element);
+            } else {
+              remainingWires.push(wire);
+            }
+          });
+          appState.wires = remainingWires;
+
+          if (mach.el.parentNode) mach.el.parentNode.removeChild(mach.el);
+          appState.machinesOnBoard.splice(machIdx, 1);
+          appState.selectedMachineUid = null;
+          refreshEmptyNotice();
+          notify('Máquina eliminada');
+        }
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (document.activeElement.tagName === 'INPUT') return;
+      if (e.key === 'Delete' || e.key === 'Backspace') deleteActiveSelection();
+      if (e.key === 'Escape') {
+        abortWiring();
+        deselectWire();
+        deselectMachine();
+      }
+    });
+
+    document.querySelectorAll('.color-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.color-btn').forEach(b => {
+          b.classList.remove('ring-2', 'border-white');
+          b.classList.add('border-transparent');
+        });
+        btn.classList.add('ring-2', 'border-white');
+        appState.currentColor = btn.dataset.color;
+
+        if (appState.selectedWireId) {
+          const wire = appState.wires.find(w => w.id === appState.selectedWireId);
+          if (wire) {
+            wire.color = appState.currentColor;
+            wire.mainPath.setAttribute('stroke', wire.color);
+          }
+        }
+      });
+    });
+
+    document.getElementById('btnDeleteSelected').addEventListener('click', deleteActiveSelection);
+
+    document.getElementById('btnClearWires').addEventListener('click', () => {
+      appState.wires.forEach(w => {
+        if (w.element.parentNode) w.element.parentNode.removeChild(w.element);
+      });
+      appState.wires = [];
+      appState.selectedWireId = null;
+      notify('Todos los cables retirados');
+    });
+
+    document.getElementById('btnClearAll').addEventListener('click', () => {
+      appState.wires.forEach(w => {
+        if (w.element.parentNode) w.element.parentNode.removeChild(w.element);
+      });
+      appState.wires = [];
+      appState.machinesOnBoard.forEach(m => {
+        if (m.el.parentNode) m.el.parentNode.removeChild(m.el);
+      });
+      appState.machinesOnBoard = [];
+      appState.selectedWireId = null;
+      appState.selectedMachineUid = null;
+      abortWiring();
+      refreshEmptyNotice();
+      notify('Tablero limpio');
+    });
+
+    /* ============================================================
+       EXPORTACIÓN A PNG DE ALTA RESOLUCIÓN
+       ============================================================ */
+    document.getElementById('btnExport').addEventListener('click', () => {
+      if (appState.machinesOnBoard.length === 0) {
+        notify('Agrega máquinas antes de exportar');
+        return;
+      }
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      appState.machinesOnBoard.forEach(m => {
+        const tmpl = MACHINE_TEMPLATES.find(t => t.id === m.templateId);
+        minX = Math.min(minX, m.x);
+        minY = Math.min(minY, m.y);
+        maxX = Math.max(maxX, m.x + tmpl.width);
+        maxY = Math.max(maxY, m.y + tmpl.height);
+      });
+
+      const pad = 70;
+      minX = Math.max(0, minX - pad);
+      minY = Math.max(0, minY - pad);
+      const width = (maxX - minX) + pad * 2;
+      const height = (maxY - minY) + pad * 2;
+
+      const canvas = document.createElement('canvas');
+      const scale = 2;
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(scale, scale);
+
+      ctx.fillStyle = viewport.classList.contains('theme-dark') ? '#0b1120' : '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+
+      const renderPromises = appState.machinesOnBoard.map(mach => {
+        return new Promise((resolve) => {
+          const tmpl = MACHINE_TEMPLATES.find(t => t.id === mach.templateId);
+          const svgCode = `<svg xmlns="http://www.w3.org/2000/svg" width="${tmpl.width}" height="${tmpl.height}">${tmpl.svgContent}</svg>`;
+          const img = new Image();
+          const blob = new Blob([svgCode], { type: 'image/svg+xml;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          img.onload = () => {
+            ctx.drawImage(img, mach.x - minX, mach.y - minY, tmpl.width, tmpl.height);
+            tmpl.terminals.forEach(term => {
+              ctx.beginPath();
+              ctx.arc(mach.x + term.x - minX, mach.y + term.y - minY, 8.5, 0, Math.PI * 2);
+              ctx.fillStyle = term.color;
+              ctx.fill();
+              ctx.strokeStyle = '#0f172a';
+              ctx.lineWidth = 2.5;
+              ctx.stroke();
+            });
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          img.src = url;
+        });
+      });
+
+      Promise.all(renderPromises).then(() => {
+        appState.wires.forEach(wire => {
+          const p1Raw = getAbsoluteTerminalCoords(wire.fromUid, wire.fromTermId);
+          const p2Raw = getAbsoluteTerminalCoords(wire.toUid, wire.toTermId);
+          const p1 = { x: p1Raw.x - minX, y: p1Raw.y - minY };
+          const p2 = { x: p2Raw.x - minX, y: p2Raw.y - minY };
+          const pathStr = generateWirePathData(p1, p2, wire.customOffset, wire.style, wire.orthoVariant);
+          const path2d = new Path2D(pathStr);
+
+          ctx.strokeStyle = wire.color;
+          ctx.lineWidth = 5.5;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.stroke(path2d);
+        });
+
+        const link = document.createElement('a');
+        link.download = 'conexiones-laboratorio-electrico.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        notify('Imagen PNG descargada');
+      });
+    });
+
+    let toastTimeout;
+    function notify(msg) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      toastMsg.textContent = msg;
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2600);
+    }
+
+    /* ============================================================
+       CARGA INICIAL DEMOSTRATIVA CON EL NUEVO DL 1080 TRIFÁSICO
+       ============================================================ */
+    window.onload = function() {
+      renderCatalog();
+      updateTransform();
+
+      // Colocar la Fuente DL 1013M3 y el nuevo Transformador Trifásico DL 1080 exacto a tu foto
+      const mFuente = spawnMachine('dl1013m3', 30, 40);
+      const mTrafoTri = spawnMachine('dl1080_tri', 680, 30);
+      const mSyncGrey = spawnMachine('sync_box_grey', 30, 300);
+      const mWatt = spawnMachine('wattmeter', 490, 320);
+
+      setTimeout(() => {
+        // Conexión trifásica de ejemplo hacia el primario del DL 1080 (1U1, 1V1, 1W1)
+        const w1 = addWire(mFuente, 'mains_l1', mTrafoTri, '1u1', '#dc2626');
+        const w2 = addWire(mFuente, 'mains_l2', mTrafoTri, '1v1', '#f59e0b');
+        const w3 = addWire(mFuente, 'mains_l3', mTrafoTri, '1w1', '#2563eb');
+        // Puente estrella en 1U2 - 1V2 - 1W2
+        addWire(mTrafoTri, '1u2', mTrafoTri, '1v2', '#0f172a');
+        addWire(mTrafoTri, '1v2', mTrafoTri, '1w2', '#0f172a');
+
+        if (w1) { w1.customOffset = { x: 0, y: -55 }; renderWirePath(w1); }
+        if (w2) { w2.customOffset = { x: 0, y: -35 }; renderWirePath(w2); }
+        if (w3) { w3.customOffset = { x: 0, y: -15 }; renderWirePath(w3); }
+
+        notify('DL 1080 Trifásico exacto cargado • Arrastra el fondo para moverte por el tablero');
+      }, 250);
+    };
+  </script>
+</body>
+</html>
